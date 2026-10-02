@@ -1,15 +1,25 @@
-from services.payment_service import simulate_payment
+from payment_service import process_payment
 
 
-def prepare_payment(bill):
+def make_payment(bill):
 
-    if bill.get("status") == "Paid":
+    """
+    Payment agent.
+    Actual payment is simulated for the MVP.
+    """
 
+    if not bill:
         return {
-            "approved": False,
-            "message": "Bill is already paid."
+            "success": False,
+            "message": "Invalid bill."
         }
 
-    return simulate_payment(
-        bill
-    )
+    amount = bill.get("amount")
+
+    if not amount:
+        return {
+            "success": False,
+            "message": "Bill amount is missing."
+        }
+
+    return process_payment(bill)

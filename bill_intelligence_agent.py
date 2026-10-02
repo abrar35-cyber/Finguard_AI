@@ -1,36 +1,32 @@
 from groq_service import extract_bill_with_groq
 
 
-def analyze_bill(text):
+def analyze_bill(raw_bill):
+
+    """
+    Analyze a raw bill using Groq and return
+    structured bill information.
+    """
+
+    if not raw_bill:
+        return None
+
+    text = raw_bill.get("content", "")
+
+    if not text:
+        text = raw_bill.get("text", "")
+
+    if not text:
+        text = str(raw_bill)
 
     result = extract_bill_with_groq(text)
 
-    if result:
+    if not result:
+        return None
 
-        required = [
-            "provider",
-            "amount",
-            "due_date",
-            "reference_number"
-        ]
+    result["source"] = raw_bill.get(
+        "source",
+        "demo"
+    )
 
-        result["valid"] = all(
-            result.get(field)
-            for field in required
-        )
-
-        if result.get("status") is None:
-            result["status"] = "Pending"
-
-        if result.get("source") is None:
-            result["source"] = "Physical Bill"
-
-        return result
-
-    return {
-        "valid": False,
-        "message": (
-            "Groq could not extract enough "
-            "information from this bill."
-        )
-    }
+    return result

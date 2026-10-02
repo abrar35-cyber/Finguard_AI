@@ -1,69 +1,44 @@
-from datetime import date, datetime
+from datetime import datetime
 
 
-def get_reminder(bill):
+def get_reminder_status(due_date):
+
+    if not due_date:
+        return "Due date unavailable"
 
     try:
 
-        due_date = datetime.strptime(
-            bill["due_date"],
+        due = datetime.strptime(
+            str(due_date),
             "%Y-%m-%d"
         ).date()
 
-        days = (
-            due_date - date.today()
+        today = datetime.today().date()
+
+        days_left = (
+            due - today
         ).days
+
+        if days_left < 0:
+
+            return f"Overdue by {abs(days_left)} day(s)"
+
+        elif days_left == 0:
+
+            return "Due today"
+
+        elif days_left == 1:
+
+            return "Due tomorrow"
+
+        elif days_left <= 3:
+
+            return f"Due in {days_left} day(s)"
+
+        else:
+
+            return f"{days_left} day(s) remaining"
 
     except Exception:
 
-        return {
-            "level": "normal",
-            "message": "Due date unavailable",
-            "days": None
-        }
-
-    if bill.get("status") == "Paid":
-
-        return {
-            "level": "paid",
-            "message": "Paid",
-            "days": days
-        }
-
-    if days < 0:
-
-        return {
-            "level": "urgent",
-            "message": f"Overdue by {abs(days)} day(s)",
-            "days": days
-        }
-
-    if days == 0:
-
-        return {
-            "level": "urgent",
-            "message": "Due today",
-            "days": days
-        }
-
-    if days <= 2:
-
-        return {
-            "level": "urgent",
-            "message": f"Due in {days} day(s)",
-            "days": days
-        }
-
-    if days <= 5:
-
-        return {
-            "level": "warning",
-            "message": f"Due in {days} day(s)",
-            "days": days
-        }
-
-    return {
-        "level": "normal",
-        "message": f"Due in {days} day(s)",
-        "days": days
-    }
+        return "Invalid due date"

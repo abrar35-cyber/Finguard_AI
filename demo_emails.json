@@ -1,0 +1,42 @@
+[
+  {
+    "sender": "billing@ke-demo.pk",
+    "subject": "Your K-Electric Bill - October 2026",
+    "provider": "K-Electric",
+    "bill_type": "Electricity",
+    "amount": 8450,
+    "due_date": "2026-10-05",
+    "reference_number": "KE-123456789",
+    "is_bill": true
+  },
+  {
+    "sender": "billing@ptcl-demo.pk",
+    "subject": "PTCL Internet Bill - October 2026",
+    "provider": "PTCL",
+    "bill_type": "Internet",
+    "amount": 2999,
+    "due_date": "2026-10-10",
+    "reference_number": "PTCL-987654321",
+    "is_bill": true
+  },
+  {
+    "sender": "billing@ssgc-demo.pk",
+    "subject": "SSGC Gas Bill - October 2026",
+    "provider": "SSGC",
+    "bill_type": "Gas",
+    "amount": 1850,
+    "due_date": "2026-10-15",
+    "reference_number": "SSGC-456789123",
+    "is_bill": true
+  },
+  {
+    "sender": "newsletter@example.com",
+    "subject": "Monthly Newsletter",
+    "provider": "",
+    "bill_type": "",
+    "amount": 0,
+    "due_date": "",
+    "reference_number": "NOT-A-BILL",
+    "is_bill": false
+  }
+]

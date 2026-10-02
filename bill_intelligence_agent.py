@@ -1,4 +1,4 @@
-from services.groq_service import extract_bill_with_groq
+from groq_service import extract_bill_with_groq
 
 
 def analyze_bill(text):

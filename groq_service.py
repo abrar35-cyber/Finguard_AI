@@ -1,90 +1,92 @@
 import json
 import streamlit as st
+from groq import Groq
+
+
+def get_groq_client():
+
+    api_key = st.secrets.get(
+        "GROQ_API_KEY"
+    )
+
+    if not api_key:
+
+        raise ValueError(
+            "GROQ_API_KEY is not configured."
+        )
+
+    return Groq(
+        api_key=api_key
+    )
 
 
 def extract_bill_with_groq(text):
 
-    try:
+    client = get_groq_client()
 
-        from groq import Groq
+    prompt = f"""
+You are a bill information extraction assistant.
 
-        api_key = st.secrets.get(
-            "GROQ_API_KEY"
-        )
-
-        if not api_key:
-            return None
-
-        client = Groq(
-            api_key=api_key
-        )
-
-        prompt = f"""
-Extract bill information from the following bill text.
+Extract information from the bill text below.
 
 Return ONLY valid JSON.
 
-Required keys:
+Required fields:
 
 provider
 bill_type
 amount
 due_date
-reference_number
-status
-source
+account_number
 
-Use YYYY-MM-DD for due_date.
-
-If information is missing, use null.
+If a value is unavailable, use null.
 
 Bill text:
 
-{text[:12000]}
+{text}
 """
 
-        response = client.chat.completions.create(
+    response = client.chat.completions.create(
 
-            model="llama-3.1-8b-instant",
+        model="llama-3.1-8b-instant",
 
-            messages=[
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You extract structured information "
+                    "from bills and return valid JSON only."
+                )
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
 
-                {
-                    "role": "system",
-                    "content":
-                    "You extract structured billing information accurately. Return JSON only."
-                },
+        temperature=0
+    )
 
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
+    content = response.choices[0].message.content
 
-            temperature=0
-        )
+    try:
 
-        content = (
-            response
-            .choices[0]
-            .message
-            .content
-            .strip()
-        )
+        return json.loads(content)
 
-        if content.startswith("```"):
+    except json.JSONDecodeError:
 
-            content = (
-                content
-                .replace("```json", "")
-                .replace("```", "")
-                .strip()
-            )
+        # Handle accidental markdown JSON
+        content = content.replace(
+            "```json",
+            ""
+        ).replace(
+            "```",
+            ""
+        ).strip()
 
-        return json.loads(
-            content
-        )
+        try:
+            return json.loads(content)
 
-    except Exception:
+        except Exception:
 
-        return None
+            return None

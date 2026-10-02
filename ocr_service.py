@@ -1,22 +1,15 @@
-def extract_text_from_image(
-    uploaded_file
-):
+import pytesseract
+from PIL import Image
 
-    try:
 
-        import pytesseract
-        from PIL import Image
+def extract_text_from_image(uploaded_file):
 
-        image = Image.open(
-            uploaded_file
-        )
+    image = Image.open(
+        uploaded_file
+    )
 
-        text = pytesseract.image_to_string(
-            image
-        )
+    text = pytesseract.image_to_string(
+        image
+    )
 
-        return text
-
-    except Exception:
-
-        return ""
+    return text.strip()

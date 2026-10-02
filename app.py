@@ -2,20 +2,17 @@ import streamlit as st
 
 from bill_finder_agent import find_bills
 from bill_intelligence_agent import analyze_bill
-from agents.reminder_agent import get_reminder
-from agents.payment_agent import prepare_payment
-
-from services.ocr_service import extract_text_from_image
-
-from database.database import (
+from reminder_agent import get_reminder_status
+from payment_agent import make_payment
+from ocr_service import extract_text_from_image
+from database import (
     init_db,
     save_bill,
     get_bills,
+    mark_bill_paid,
     save_payment,
-    get_payments,
-    mark_bill_paid
+    get_payment_history,
 )
-
 
 st.set_page_config(
     page_title="BillPay AI",
@@ -25,561 +22,394 @@ st.set_page_config(
 
 init_db()
 
-
-# -----------------------------
-# Styling
-# -----------------------------
-
-st.markdown("""
-<style>
-
-.block-container {
-    padding-top: 1.5rem;
-    max-width: 1200px;
-}
-
-.bill-card {
-    padding: 18px;
-    border-radius: 14px;
-    border: 1px solid #e5e7eb;
-    background: white;
-    margin-bottom: 12px;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
+st.title("BillPay AI")
+st.caption("AI-powered bill discovery, intelligence, reminders and payments")
 
 # -----------------------------
 # Sidebar
 # -----------------------------
+st.sidebar.title("Navigation")
 
-st.title("BillPay AI")
-
-st.caption(
-    "Find bills automatically, understand them, track due dates "
-    "and pay only after user approval."
+page = st.sidebar.radio(
+    "Go to",
+    [
+        "Dashboard",
+        "My Bills",
+        "AI Assistant",
+        "Upload Bill",
+        "Payments",
+        "History"
+    ]
 )
 
-with st.sidebar:
-
-    st.header("Navigation")
-
-    page = st.radio(
-        "Go to",
-        [
-            "Dashboard",
-            "My Bills",
-            "AI Assistant",
-            "Payments",
-            "History"
-        ]
-    )
-
-    st.divider()
-
-    st.caption("BillPay AI — Hackathon MVP")
-    st.caption("Zero-cost demo architecture")
-
-
 # -----------------------------
-# Helper
+# Dashboard
 # -----------------------------
-
-def scan_demo_inbox():
-
-    bills = find_bills()
-
-    existing = get_bills()
-
-    existing_refs = {
-        bill["reference_number"]
-        for bill in existing
-    }
-
-    added = 0
-
-    for bill in bills:
-
-        if bill["reference_number"] not in existing_refs:
-
-            save_bill(bill)
-            added += 1
-
-    return added
-
-
-# =========================================================
-# DASHBOARD
-# =========================================================
-
 if page == "Dashboard":
 
-    bills = get_bills()
-
-    paid = [
-        b for b in bills
-        if b["status"] == "Paid"
-    ]
-
-    pending = [
-        b for b in bills
-        if b["status"] != "Paid"
-    ]
-
-    st.subheader("Dashboard")
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    c1.metric(
-        "Total Bills",
-        len(bills)
-    )
-
-    c2.metric(
-        "Pending",
-        len(pending)
-    )
-
-    c3.metric(
-        "Paid",
-        len(paid)
-    )
-
-    due_soon = 0
-
-    for bill in pending:
-
-        reminder = get_reminder(bill)
-
-        if reminder["level"] in ["warning", "urgent"]:
-            due_soon += 1
-
-    c4.metric(
-        "Due Soon",
-        due_soon
-    )
-
-    st.divider()
-
-    st.subheader("Bills Needing Attention")
-
-    if not bills:
-
-        st.info(
-            "No bills found yet. Go to My Bills and scan the demo inbox."
-        )
-
-    for bill in bills[:5]:
-
-        reminder = get_reminder(bill)
-
-        with st.container(border=True):
-
-            col1, col2, col3 = st.columns([2, 2, 2])
-
-            col1.markdown(
-                f"### {bill['provider']}"
-            )
-
-            col1.write(
-                bill["bill_type"]
-            )
-
-            col2.write(
-                f"**Rs. {bill['amount']:,.0f}**"
-            )
-
-            col2.write(
-                f"Due: {bill['due_date']}"
-            )
-
-            if bill["status"] == "Paid":
-
-                col3.success("Paid")
-
-            else:
-
-                col3.warning(
-                    reminder["message"]
-                )
-
-
-# =========================================================
-# MY BILLS
-# =========================================================
-
-elif page == "My Bills":
-
-    st.subheader("My Bills")
-
-    st.write(
-        "BillPay AI can discover bills from connected sources "
-        "or extract information from a physical bill."
-    )
-
-    # --------------------------------
-    # Demo inbox
-    # --------------------------------
-
-    if st.button(
-        "🔎 Scan Connected Inbox",
-        type="primary"
-    ):
-
-        added = scan_demo_inbox()
-
-        st.success(
-            f"Bill Finder Agent found {added} new bill(s)."
-        )
-
-    st.divider()
-
-    # --------------------------------
-    # OCR
-    # --------------------------------
-
-    st.subheader("Scan Physical Bill")
-
-    uploaded = st.file_uploader(
-        "Upload bill image",
-        type=[
-            "png",
-            "jpg",
-            "jpeg"
-        ]
-    )
-
-    if uploaded:
-
-        if st.button("Extract Bill Information"):
-
-            text = extract_text_from_image(
-                uploaded
-            )
-
-            if not text.strip():
-
-                st.warning(
-                    "No readable text found. "
-                    "Try a clearer bill image."
-                )
-
-            else:
-
-                st.text_area(
-                    "Extracted Text",
-                    text,
-                    height=180
-                )
-
-                result = analyze_bill(
-                    text
-                )
-
-                if result.get("valid"):
-
-                    save_bill(result)
-
-                    st.success(
-                        "Bill successfully extracted and saved."
-                    )
-
-                else:
-
-                    st.warning(
-                        result.get(
-                            "message",
-                            "Could not verify the bill."
-                        )
-                    )
-
-    st.divider()
-
-    # --------------------------------
-    # Existing bills
-    # --------------------------------
-
-    st.subheader("Saved Bills")
+    st.header("Dashboard")
 
     bills = get_bills()
 
-    if not bills:
+    total_bills = len(bills)
+    unpaid_bills = sum(1 for bill in bills if bill.get("status") != "paid")
+    paid_bills = sum(1 for bill in bills if bill.get("status") == "paid")
 
-        st.info(
-            "No bills saved yet."
-        )
+    col1, col2, col3 = st.columns(3)
 
-    for bill in bills:
+    with col1:
+        st.metric("Total Bills", total_bills)
 
-        with st.container(border=True):
+    with col2:
+        st.metric("Pending Bills", unpaid_bills)
 
-            col1, col2, col3, col4 = st.columns(
-                [2, 2, 2, 1]
-            )
+    with col3:
+        st.metric("Paid Bills", paid_bills)
 
-            col1.markdown(
-                f"**{bill['provider']}**"
-            )
+    st.divider()
 
-            col1.caption(
-                bill["bill_type"]
-            )
+    st.subheader("Find New Bills")
 
-            col2.write(
-                f"Rs. {bill['amount']:,.0f}"
-            )
+    if st.button("Scan Connected Sources", type="primary"):
 
-            col2.caption(
-                f"Due: {bill['due_date']}"
-            )
+        with st.spinner("Searching for bills..."):
 
-            col3.write(
-                f"Ref: ••••{bill['reference_number'][-4:]}"
-            )
+            found_bills = find_bills()
 
-            col3.caption(
-                bill["status"]
-            )
-
-            if bill["status"] == "Paid":
-
-                col4.success("Paid")
-
-            else:
-
-                col4.warning("Pending")
-
-
-# =========================================================
-# AI ASSISTANT
-# =========================================================
-
-elif page == "AI Assistant":
-
-    st.subheader("AI Assistant")
-
-    st.caption(
-        "Ask BillPay AI about your bills."
-    )
-
-    question = st.chat_input(
-        "Example: Which bills are due soon?"
-    )
-
-    if question:
-
-        st.chat_message(
-            "user"
-        ).write(question)
-
-        bills = get_bills()
-
-        if not bills:
-
-            st.chat_message(
-                "assistant"
-            ).write(
-                "I don't have any bills yet. "
-                "Please scan your connected inbox first."
-            )
-
+        if not found_bills:
+            st.info("No new bills found.")
         else:
 
-            q = question.lower()
+            for raw_bill in found_bills:
 
-            # -------------------------
-            # Payment request
-            # -------------------------
+                try:
+                    analyzed_bill = analyze_bill(raw_bill)
 
-            if "pay" in q:
+                    if analyzed_bill:
+                        save_bill(analyzed_bill)
 
-                found = None
+                except Exception as e:
+                    st.error(f"Could not analyze bill: {e}")
 
-                for bill in bills:
+            st.success(f"{len(found_bills)} bill(s) processed successfully.")
 
-                    if bill["status"] == "Paid":
-                        continue
+    st.divider()
 
-                    if (
-                        "electric" in q
-                        and "electric" in bill["bill_type"].lower()
-                    ):
+    st.subheader("Recent Bills")
 
-                        found = bill
-                        break
+    bills = get_bills()
 
-                    if (
-                        "internet" in q
-                        and "internet" in bill["bill_type"].lower()
-                    ):
+    if bills:
 
-                        found = bill
-                        break
+        for bill in bills[:5]:
 
-                    if (
-                        "gas" in q
-                        and "gas" in bill["bill_type"].lower()
-                    ):
+            status = bill.get("status", "pending")
 
-                        found = bill
-                        break
+            st.write(
+                f"**{bill.get('provider', 'Unknown Provider')}** — "
+                f"Rs. {bill.get('amount', 0)} — "
+                f"Due: {bill.get('due_date', 'N/A')} — "
+                f"Status: {status}"
+            )
 
-                if found:
-
-                    st.chat_message(
-                        "assistant"
-                    ).write(
-                        f"I found your {found['provider']} bill "
-                        f"for Rs. {found['amount']:,.0f}, "
-                        f"due on {found['due_date']}."
-                    )
-
-                    st.info(
-                        "Go to Payments to explicitly confirm the payment."
-                    )
-
-                else:
-
-                    st.chat_message(
-                        "assistant"
-                    ).write(
-                        "I couldn't find a matching unpaid bill."
-                    )
-
-            # -------------------------
-            # Bill information
-            # -------------------------
-
-            else:
-
-                response = "Here are your current bills:\n\n"
-
-                for bill in bills:
-
-                    response += (
-                        f"- {bill['provider']}: "
-                        f"Rs. {bill['amount']:,.0f} — "
-                        f"due {bill['due_date']} "
-                        f"({bill['status']})\n"
-                    )
-
-                st.chat_message(
-                    "assistant"
-                ).write(response)
+    else:
+        st.info("No bills available yet. Scan your connected sources.")
 
 
-# =========================================================
-# PAYMENTS
-# =========================================================
+# -----------------------------
+# My Bills
+# -----------------------------
+elif page == "My Bills":
 
-elif page == "Payments":
+    st.header("My Bills")
 
-    st.subheader("Payments")
-
-    bills = [
-        b for b in get_bills()
-        if b["status"] != "Paid"
-    ]
+    bills = get_bills()
 
     if not bills:
 
-        st.success(
-            "No pending payments."
-        )
+        st.info("No bills found yet.")
 
-    for bill in bills:
+    else:
 
-        with st.container(border=True):
+        for bill in bills:
 
-            st.markdown(
-                f"### {bill['provider']}"
-            )
-
-            st.write(
-                f"Amount: **Rs. {bill['amount']:,.0f}**"
-            )
-
-            st.write(
-                f"Due date: **{bill['due_date']}**"
-            )
-
-            st.caption(
-                f"Reference: {bill['reference_number']}"
-            )
-
-            confirm = st.checkbox(
-                f"I confirm payment of Rs. {bill['amount']:,.0f}",
-                key=f"confirm_{bill['id']}"
-            )
-
-            if st.button(
-                "Pay Now — Demo",
-                key=f"pay_{bill['id']}",
-                disabled=not confirm
-            ):
-
-                result = prepare_payment(
-                    bill
-                )
-
-                if result["approved"]:
-
-                    save_payment(
-                        bill,
-                        result["transaction_id"]
-                    )
-
-                    mark_bill_paid(
-                        bill["id"]
-                    )
-
-                    st.success(
-                        "Payment successful!"
-                    )
-
-                    st.code(
-                        result["transaction_id"]
-                    )
-
-                    st.rerun()
-
-
-# =========================================================
-# HISTORY
-# =========================================================
-
-elif page == "History":
-
-    st.subheader("Payment History")
-
-    payments = get_payments()
-
-    if not payments:
-
-        st.info(
-            "No payments yet."
-        )
-
-    for payment in payments:
-
-        with st.container(border=True):
+            st.subheader(bill.get("provider", "Unknown Provider"))
 
             col1, col2, col3 = st.columns(3)
 
-            col1.write(
-                f"**{payment['provider']}**"
+            with col1:
+                st.write(f"**Amount:** Rs. {bill.get('amount', 0)}")
+
+            with col2:
+                st.write(f"**Due Date:** {bill.get('due_date', 'N/A')}")
+
+            with col3:
+                st.write(f"**Status:** {bill.get('status', 'pending')}")
+
+            if bill.get("account_number"):
+                st.write(
+                    f"**Account:** {bill.get('account_number')}"
+                )
+
+            if bill.get("bill_type"):
+                st.write(
+                    f"**Type:** {bill.get('bill_type')}"
+                )
+
+            st.divider()
+
+
+# -----------------------------
+# AI Assistant
+# -----------------------------
+elif page == "AI Assistant":
+
+    st.header("AI Bill Assistant")
+
+    question = st.text_input(
+        "Ask something about your bills",
+        placeholder="Which bill is due soon?"
+    )
+
+    if st.button("Ask AI"):
+
+        if not question.strip():
+
+            st.warning("Please enter a question.")
+
+        else:
+
+            bills = get_bills()
+
+            question_lower = question.lower()
+
+            if not bills:
+
+                st.info("You don't have any bills yet.")
+
+            elif "due" in question_lower:
+
+                statuses = []
+
+                for bill in bills:
+
+                    status = get_reminder_status(
+                        bill.get("due_date")
+                    )
+
+                    statuses.append(
+                        (
+                            bill.get("provider", "Unknown"),
+                            bill.get("amount", 0),
+                            bill.get("due_date", "N/A"),
+                            status
+                        )
+                    )
+
+                st.subheader("Bill Due Status")
+
+                for provider, amount, due_date, status in statuses:
+
+                    st.write(
+                        f"**{provider}** — Rs. {amount} — "
+                        f"Due: {due_date} — {status}"
+                    )
+
+            elif "unpaid" in question_lower or "pending" in question_lower:
+
+                pending = [
+                    bill for bill in bills
+                    if bill.get("status") != "paid"
+                ]
+
+                if pending:
+
+                    for bill in pending:
+
+                        st.write(
+                            f"**{bill.get('provider')}** — "
+                            f"Rs. {bill.get('amount')} — "
+                            f"Due: {bill.get('due_date')}"
+                        )
+
+                else:
+
+                    st.success("You have no pending bills.")
+
+            else:
+
+                st.write(
+                    "I can currently help you check pending bills "
+                    "and upcoming due dates."
+                )
+
+
+# -----------------------------
+# Upload Bill
+# -----------------------------
+elif page == "Upload Bill":
+
+    st.header("Upload a Bill")
+
+    st.write(
+        "Upload a bill image and BillPay AI will extract "
+        "the available information using OCR."
+    )
+
+    uploaded_file = st.file_uploader(
+        "Choose bill image",
+        type=["png", "jpg", "jpeg"]
+    )
+
+    if uploaded_file:
+
+        st.image(
+            uploaded_file,
+            caption="Uploaded Bill",
+            use_container_width=True
+        )
+
+        if st.button("Extract Bill Information"):
+
+            with st.spinner("Reading bill..."):
+
+                try:
+
+                    image_text = extract_text_from_image(
+                        uploaded_file
+                    )
+
+                    if image_text:
+
+                        st.subheader("Extracted Text")
+
+                        st.text_area(
+                            "OCR Result",
+                            image_text,
+                            height=250
+                        )
+
+                    else:
+
+                        st.warning(
+                            "Could not extract readable text."
+                        )
+
+                except Exception as e:
+
+                    st.error(
+                        f"OCR failed: {e}"
+                    )
+
+
+# -----------------------------
+# Payments
+# -----------------------------
+elif page == "Payments":
+
+    st.header("Bill Payments")
+
+    bills = get_bills()
+
+    pending_bills = [
+        bill for bill in bills
+        if bill.get("status") != "paid"
+    ]
+
+    if not pending_bills:
+
+        st.success("No pending payments.")
+
+    else:
+
+        for bill in pending_bills:
+
+            st.subheader(
+                bill.get("provider", "Unknown Provider")
             )
 
-            col2.write(
-                f"Rs. {payment['amount']:,.0f}"
+            st.write(
+                f"Amount: Rs. {bill.get('amount', 0)}"
             )
 
-            col3.success(
-                payment["status"]
+            st.write(
+                f"Due Date: {bill.get('due_date', 'N/A')}"
             )
 
-            st.caption(
-                f"{payment['payment_date']} • "
-                f"{payment['transaction_id']}"
+            confirm = st.checkbox(
+                f"I authorize payment of Rs. {bill.get('amount', 0)}",
+                key=f"confirm_{bill.get('id')}"
             )
+
+            if st.button(
+                "Pay Bill",
+                key=f"pay_{bill.get('id')}"
+            ):
+
+                if not confirm:
+
+                    st.warning(
+                        "Please confirm the payment first."
+                    )
+
+                else:
+
+                    with st.spinner("Processing payment..."):
+
+                        result = make_payment(bill)
+
+                    if result.get("success"):
+
+                        mark_bill_paid(
+                            bill.get("id")
+                        )
+
+                        save_payment(
+                            bill,
+                            result.get("transaction_id")
+                        )
+
+                        st.success(
+                            "Payment successful!"
+                        )
+
+                        st.write(
+                            f"Transaction ID: "
+                            f"{result.get('transaction_id')}"
+                        )
+
+                    else:
+
+                        st.error(
+                            result.get(
+                                "message",
+                                "Payment failed."
+                            )
+                        )
+
+
+# -----------------------------
+# History
+# -----------------------------
+elif page == "History":
+
+    st.header("Payment History")
+
+    history = get_payment_history()
+
+    if not history:
+
+        st.info("No payment history available.")
+
+    else:
+
+        for payment in history:
+
+            st.write(
+                f"**{payment.get('provider', 'Unknown')}** — "
+                f"Rs. {payment.get('amount', 0)} — "
+                f"Transaction: "
+                f"{payment.get('transaction_id', 'N/A')}"
+            )
+
+            st.divider()

@@ -1,48 +1,53 @@
 import json
-from pathlib import Path
-
-
-DATA_FILE = (
-    Path(__file__).resolve().parent.parent
-    / "data"
-    / "demo_emails.json"
-)
+import os
 
 
 def find_bills():
 
-    with open(
-        DATA_FILE,
-        "r",
-        encoding="utf-8"
-    ) as file:
+    """
+    Finds bills from the demo connected inbox.
+    """
 
-        emails = json.load(file)
+    file_path = "demo_emails.json"
+
+    if not os.path.exists(file_path):
+        return []
+
+    try:
+
+        with open(
+            file_path,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            emails = json.load(file)
+
+    except Exception:
+        return []
 
     bills = []
 
     for email in emails:
 
-        if email.get("is_bill"):
+        content = email.get(
+            "content",
+            email.get("body", "")
+        )
 
-            bills.append({
+        subject = email.get(
+            "subject",
+            ""
+        )
 
-                "provider": email["provider"],
-
-                "bill_type": email["bill_type"],
-
-                "amount": float(
-                    email["amount"]
-                ),
-
-                "due_date": email["due_date"],
-
-                "reference_number":
-                    email["reference_number"],
-
-                "status": "Pending",
-
-                "source": "Demo Gmail"
-            })
+        bills.append(
+            {
+                "source": "demo_email",
+                "sender": email.get("sender", ""),
+                "subject": subject,
+                "content": content,
+                "text": content
+            }
+        )
 
     return bills

@@ -1,7 +1,7 @@
 import streamlit as st
 
-from agents.bill_finder_agent import find_bills
-from agents.bill_intelligence_agent import analyze_bill
+from bill_finder_agent import find_bills
+from bill_intelligence_agent import analyze_bill
 from agents.reminder_agent import get_reminder
 from agents.payment_agent import prepare_payment
 

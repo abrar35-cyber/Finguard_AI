@@ -47,15 +47,15 @@ def find_bills():
     return bills
 
 
-def find_bills_from_inbox():
+def find_bills_from_inbox(user_email=""):
     """
     Full pipeline used by the app button:
     inbox -> structured bill -> database (skipping duplicates).
-    Returns the number of NEW bills saved.
+    Returns the number of NEW bills saved for this user.
     """
     # bills table columns: id, type, provider, consumer, amount, due_date, status, created
     existing = {
-        (str(b[2]).lower(), str(b[5]), float(b[4] or 0)) for b in get_bills()
+        (str(b[2]).lower(), str(b[5]), float(b[4] or 0)) for b in get_bills(user_email)
     }
 
     added = 0
@@ -79,7 +79,8 @@ def find_bills_from_inbox():
                 "amount": amount,
                 "due_date": due_date,
                 "extracted_text": item.get("subject", ""),
-            }
+            },
+            user_email=user_email,
         )
         existing.add(key)
         added += 1

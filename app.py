@@ -1,3 +1,4 @@
+import json
 import re
 import secrets
 import time
@@ -12,7 +13,7 @@ import streamlit as st
 try:
     from database import (
         init_db, get_bills, get_payments, add_bill, add_payment,
-        register_user, get_user,
+        register_user, get_user, update_user, export_user_data, delete_user_data,
     )
     DB_OK = True
 except ImportError:
@@ -21,6 +22,7 @@ except ImportError:
     get_bills = lambda user_email=None: []
     get_payments = lambda user_email=None: []
     add_bill = add_payment = register_user = get_user = None
+    update_user = export_user_data = delete_user_data = None
 
 try:
     from groq_service import ask_groq
@@ -60,7 +62,7 @@ try:
 except Exception:
     pass
 
-if not DB_OK or not register_user:
+if not DB_OK or not register_user or not update_user:
     st.error("database.py is missing or outdated. Please update it on GitHub.")
     st.stop()
 
@@ -183,7 +185,8 @@ st.markdown(CSS, unsafe_allow_html=True)
 # =========================================================
 ICONS = {"electricity": "⚡", "gas": "🔥", "internet": "🌐", "water": "💧", "telecom": "📱"}
 PALETTE = ["#10b981", "#38bdf8", "#f59e0b", "#a78bfa", "#f472b6", "#fb7185"]
-WALLETS = ["JazzCash", "Easypaisa", "SadaPay", "NayaPay", "Other wallet"]
+WALLETS = ["JazzCash", "Easypaisa", "SadaPay", "NayaPay", "Bank account", "Other wallet"]
+AVATAR_COLORS = {"Emerald": "#10b981", "Sky": "#38bdf8", "Amber": "#f59e0b", "Violet": "#a78bfa", "Rose": "#fb7185"}
 OTP_SECONDS = 300
 
 
@@ -204,6 +207,19 @@ def normalize_phone(raw):
     if digits.startswith("92") and len(digits) == 12:
         digits = "0" + digits[2:]
     return digits if re.fullmatch(r"03\d{9}", digits) else ""
+
+
+def normalize_account(raw):
+    """Accept a mobile wallet number (03XXXXXXXXX), an IBAN (PK..), or an 8 to 20 digit account number."""
+    phone = normalize_phone(raw)
+    if phone:
+        return phone
+    cleaned = re.sub(r"[\s\-]", "", raw or "").upper()
+    if re.fullmatch(r"PK\d{2}[A-Z0-9]{20}", cleaned):
+        return cleaned
+    if re.fullmatch(r"\d{8,20}", cleaned):
+        return cleaned
+    return ""
 
 
 def mask_phone(num):
@@ -296,16 +312,18 @@ def auth_page():
                     name = st.text_input("Full name", placeholder="e.g. Ali Khan")
                     email = st.text_input("Email", placeholder="you@example.com")
                     wallet = st.selectbox("Your wallet", WALLETS)
-                    number = st.text_input("Wallet mobile number", placeholder="03XX XXXXXXX")
+                    number = st.text_input("Wallet number or account number", placeholder="03XX XXXXXXX")
                     go = st.form_submit_button("Create my account", type="primary", use_container_width=True)
                 if go:
-                    phone = normalize_phone(number)
+                    phone = normalize_account(number)
                     if not name.strip():
                         st.warning("Please enter your name.")
                     elif not valid_email(email):
                         st.warning("Please enter a valid email address.")
                     elif not phone:
-                        st.warning("Enter a valid Pakistani mobile number, like 0300 1234567.")
+                        st.warning("Enter a wallet number like 0300 1234567, or a bank account number or IBAN.")
+                    elif get_user(email):
+                        st.warning("This email already has an account. Please use the Sign in tab.")
                     else:
                         st.session_state["user"] = register_user(email, name.strip(), wallet, phone)
                         flash(f"Welcome, {name.strip()}!", "👋")
@@ -442,12 +460,12 @@ with h1:
 with h2:
     st.markdown(
         f'<div class="userchip"><div><b>{esc(user["name"])}</b><br>{esc(wallet_label)}</div>'
-        f'<div class="avatar">{esc(user["name"][:1].upper())}</div></div>',
+        f'<div class="avatar" style="background:{esc(user.get("avatar_color") or "#38bdf8")}">{esc(user["name"][:1].upper())}</div></div>',
         unsafe_allow_html=True,
     )
 with h3:
     if st.button("Log out", key="logout_btn"):
-        for k in ["user", "otp", "receipt", "chat_history", "pay_focus"]:
+        for k in ["user", "otp", "receipt", "chat_history", "pay_focus", "wallet_change"]:
             st.session_state.pop(k, None)
         st.rerun()
 
@@ -465,8 +483,8 @@ if receipt:
         unsafe_allow_html=True,
     )
 
-tab_overview, tab_scan, tab_bills, tab_agents, tab_chat = st.tabs(
-    ["🏠 Home", "📸 Scan Bill", "💳 Bills", "🧠 AI Agents", "💬 Copilot"]
+tab_overview, tab_scan, tab_bills, tab_agents, tab_chat, tab_settings = st.tabs(
+    ["🏠 Home", "📸 Scan Bill", "💳 Bills", "🧠 AI Agents", "💬 Copilot", "⚙️ Settings"]
 )
 
 # ---------------------------------------------------------
@@ -716,6 +734,7 @@ with tab_chat:
             history_ctx = "\n".join(f"{r}: {t}" for r, t in st.session_state.chat_history[-7:-1])
             prompt = (
                 f"User: {user['name']}\n"
+                f"Reply language: {'Roman Urdu (Urdu written in English letters)' if user.get('language') == 'Roman Urdu' else 'English'}\n"
                 f"User Database Context:\n{bill_ctx}\n\n"
                 f"Recent conversation:\n{history_ctx or 'None'}\n\n"
                 f"Question: {query}\nAnswer accurately, concisely, and professionally."
@@ -725,3 +744,125 @@ with tab_chat:
                     answer = ask_groq(prompt)
                 st.markdown(answer)
             st.session_state.chat_history.append(("assistant", answer))
+
+# ---------------------------------------------------------
+# TAB 6: SETTINGS
+# ---------------------------------------------------------
+with tab_settings:
+    st.markdown('<div class="sec-t">Settings</div><div class="sec-s">Manage your wallet, profile and privacy</div>', unsafe_allow_html=True)
+    s_wallet, s_profile, s_privacy = st.tabs(["💳 Wallet", "🎨 Personalisation", "🔒 Privacy"])
+
+    # ----- WALLET -----
+    with s_wallet:
+        with st.container(border=True):
+            st.markdown('<div class="sec-t">Payment wallet</div><div class="sec-s">The Payment Agent pays from this wallet or account, only after you confirm with an OTP.</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="agent"><div class="agent-av">👛</div><div><div class="agent-n">Current wallet</div>'
+                f'<div class="agent-m"><b>{esc(user["wallet_provider"])}</b><br>{esc(mask_phone(user["wallet_number"]))}</div></div></div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown('<div class="sec-t" style="font-size:15px;margin-top:6px">Change wallet</div>', unsafe_allow_html=True)
+
+            wc = st.session_state.get("wallet_change")
+            if not wc:
+                idx = WALLETS.index(user["wallet_provider"]) if user["wallet_provider"] in WALLETS else 0
+                new_provider = st.selectbox("Wallet or bank", WALLETS, index=idx, key="wl_provider")
+                new_number = st.text_input("Wallet number or account number", placeholder="03XX XXXXXXX or PK.. IBAN", key="wl_number")
+                if st.button("📲 Get OTP to confirm change", key="wl_otp_btn", type="primary"):
+                    acct = normalize_account(new_number)
+                    if not acct:
+                        st.warning("Enter a wallet number like 0300 1234567, or a bank account number or IBAN.")
+                    else:
+                        st.session_state["wallet_change"] = {
+                            "provider": new_provider, "number": acct,
+                            "code": str(secrets.randbelow(900000) + 100000),
+                            "exp": time.time() + OTP_SECONDS, "tries": 0,
+                        }
+                        st.rerun()
+            else:
+                st.markdown(f'<div class="muted">Changing to <b>{esc(wc["provider"])}</b> {esc(mask_phone(wc["number"]))}</div>', unsafe_allow_html=True)
+                st.info(f"Demo mode: SMS is not connected, so your OTP is shown here: **{wc['code']}** (valid 5 minutes)")
+                code_in = st.text_input("Enter the 6-digit OTP", max_chars=6, key="wl_code")
+                w1, w2 = st.columns(2)
+                with w1:
+                    if st.button("✅ Confirm change", key="wl_confirm", type="primary", use_container_width=True):
+                        if time.time() > wc["exp"]:
+                            st.session_state.pop("wallet_change", None)
+                            flash("OTP expired. Please try again.", "⏰")
+                            st.rerun()
+                        elif code_in.strip() == wc["code"]:
+                            update_user(email, wallet_provider=wc["provider"], wallet_number=wc["number"])
+                            st.session_state["user"] = get_user(email)
+                            st.session_state.pop("wallet_change", None)
+                            flash("Wallet updated.", "👛")
+                            st.rerun()
+                        else:
+                            wc["tries"] += 1
+                            if wc["tries"] >= 3:
+                                st.session_state.pop("wallet_change", None)
+                                flash("Too many wrong attempts. Please start again.", "⛔")
+                                st.rerun()
+                            st.error(f"Wrong OTP. {3 - wc['tries']} attempt(s) left.")
+                with w2:
+                    if st.button("Cancel", key="wl_cancel", use_container_width=True):
+                        st.session_state.pop("wallet_change", None)
+                        st.rerun()
+            st.caption("Prototype: no real money moves. Use a test number, not your real wallet.")
+
+    # ----- PERSONALISATION -----
+    with s_profile:
+        with st.container(border=True):
+            st.markdown('<div class="sec-t">Your profile</div><div class="sec-s">Make FinGuard feel like yours</div>', unsafe_allow_html=True)
+            cur_color_name = next((n for n, c in AVATAR_COLORS.items() if c == user.get("avatar_color")), "Sky")
+            with st.form("profile_form"):
+                p_name = st.text_input("Full name", value=user["name"])
+                st.text_input("Email (cannot be changed)", value=user["email"], disabled=True)
+                p_color = st.selectbox("Avatar colour", list(AVATAR_COLORS), index=list(AVATAR_COLORS).index(cur_color_name))
+                langs = ["English", "Roman Urdu"]
+                p_lang = st.selectbox("Copilot language", langs, index=langs.index(user.get("language", "English")) if user.get("language", "English") in langs else 0)
+                saved = st.form_submit_button("Save profile", type="primary", use_container_width=True)
+            if saved:
+                if not p_name.strip():
+                    st.warning("Name cannot be empty.")
+                else:
+                    update_user(email, name=p_name.strip(), avatar_color=AVATAR_COLORS[p_color], language=p_lang)
+                    st.session_state["user"] = get_user(email)
+                    flash("Profile updated.", "🎨")
+                    st.rerun()
+
+    # ----- PRIVACY -----
+    with s_privacy:
+        with st.container(border=True):
+            st.markdown('<div class="sec-t">Privacy policy</div><div class="sec-s">Prototype version 0.1, October 2026. This is a plain-language summary for a prototype, not legal advice.</div>', unsafe_allow_html=True)
+            with st.expander("1. What we collect", expanded=True):
+                st.markdown("Your name and email, the wallet or account number you enter, the bills you add or the inbox agent reads (provider, amount, due date, consumer number and extracted text), your payment records, and your Copilot questions during a session.")
+            with st.expander("2. How we use it"):
+                st.markdown("To show your bills and reminders, to prepare payments for your approval, and to answer your questions about your bills.")
+            with st.expander("3. AI processing"):
+                st.markdown("Bill text and your Copilot questions are sent to the Groq API so the AI can extract bill details and write answers. Please do not add information you would not want processed by an AI service.")
+            with st.expander("4. Payments"):
+                st.markdown("This is a prototype. **No real money is moved.** OTP codes are shown on screen because no SMS or email gateway is connected.")
+            with st.expander("5. Storage and retention"):
+                st.markdown("Data is kept in the app's database on the hosting platform and may be erased whenever the app restarts. Your wallet number is shown masked inside the app.")
+            with st.expander("6. Your controls"):
+                st.markdown("You can change your wallet and profile in Settings, download a copy of your data, or permanently delete your account and everything linked to it.")
+            with st.expander("7. Before a real launch"):
+                st.markdown("A production version would add real OTP verification at sign-in, encryption of stored data, explicit consent screens, a security review, and legal review against applicable Pakistani regulations.")
+
+        with st.container(border=True):
+            st.markdown('<div class="sec-t">Your data</div><div class="sec-s">Download a copy or delete everything</div>', unsafe_allow_html=True)
+            st.download_button(
+                "⬇️ Download my data (JSON)",
+                data=json.dumps(export_user_data(email), indent=2, default=str),
+                file_name="finguard_my_data.json",
+                mime="application/json",
+                key="dl_data",
+            )
+            st.divider()
+            sure = st.checkbox("I understand this permanently deletes my account, bills and payment history.", key="del_sure")
+            if st.button("🗑️ Delete my account", key="del_btn", disabled=not sure):
+                delete_user_data(email)
+                for k in ["user", "otp", "receipt", "chat_history", "pay_focus", "wallet_change"]:
+                    st.session_state.pop(k, None)
+                flash("Your account and data were deleted.", "🗑️")
+                st.rerun()

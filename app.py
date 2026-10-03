@@ -53,25 +53,22 @@ except Exception:
 
 
 # =========================================================
-# CSS STYLING (FIXED LIGHT GREEN & WHITE THEME)
+# FORCE COMPLETE LIGHT THEME VIA CSS (NO CONFIG FILE NEEDED)
 # =========================================================
 st.markdown(
 """<style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
-}
-
-/* Background */
-.stApp {
-    background: #f8fafc;
-    color: #0f172a;
+html, body, [class*="css"], .stApp {
+    font-family: 'Inter', sans-serif !important;
+    background: #f8fafc !important;
+    background-color: #f8fafc !important;
+    color: #0f172a !important;
 }
 
 section[data-testid="stSidebar"], header[data-testid="stHeader"], #MainMenu, footer {
-    display: none;
-    visibility: hidden;
+    display: none !important;
+    visibility: hidden !important;
 }
 
 .block-container {
@@ -80,9 +77,9 @@ section[data-testid="stSidebar"], header[data-testid="stHeader"], #MainMenu, foo
     padding-bottom: 60px;
 }
 
-/* Headings */
+/* Titles */
 .hero-small {
-    color: #059669;
+    color: #059669 !important;
     font-size: 12px;
     font-weight: 800;
     letter-spacing: 2px;
@@ -90,7 +87,7 @@ section[data-testid="stSidebar"], header[data-testid="stHeader"], #MainMenu, foo
 }
 
 .main-title {
-    color: #0f172a;
+    color: #0f172a !important;
     font-size: 38px;
     font-weight: 800;
     letter-spacing: -1.5px;
@@ -98,15 +95,15 @@ section[data-testid="stSidebar"], header[data-testid="stHeader"], #MainMenu, foo
 }
 
 .main-subtitle {
-    color: #475569;
+    color: #475569 !important;
     font-size: 14px;
     margin-bottom: 25px;
 }
 
 /* Metric Cards */
 .metric-card {
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
     border-radius: 12px;
     padding: 18px;
     min-height: 110px;
@@ -114,41 +111,41 @@ section[data-testid="stSidebar"], header[data-testid="stHeader"], #MainMenu, foo
 }
 
 .metric-label {
-    color: #64748b;
+    color: #64748b !important;
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
 }
 
 .metric-value {
-    color: #047857;
+    color: #047857 !important;
     font-size: 24px;
     font-weight: 800;
     margin-top: 6px;
 }
 
 .metric-small {
-    color: #94a3b8;
+    color: #94a3b8 !important;
     font-size: 11px;
     margin-top: 4px;
 }
 
 /* Section Containers */
 .section-title {
-    color: #0f172a;
+    color: #0f172a !important;
     font-size: 18px;
     font-weight: 700;
     margin-bottom: 3px;
 }
 
 .section-subtitle {
-    color: #64748b;
+    color: #64748b !important;
     font-size: 13px;
     margin-bottom: 16px;
 }
 
 div[data-testid="stVerticalBlockBorderWrapper"] {
-    background: #ffffff;
+    background: #ffffff !important;
     border: 1px solid #e2e8f0 !important;
     border-radius: 14px;
     padding: 20px;
@@ -157,8 +154,8 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 
-/* ALL INPUT LABELS VISIBILITY FIX */
-label[data-testid="stWidgetLabel"] p {
+/* LABELS FIX */
+label[data-testid="stWidgetLabel"] p, label p {
     color: #1e293b !important;
     font-weight: 600 !important;
     font-size: 13px !important;
@@ -172,92 +169,105 @@ label[data-testid="stWidgetLabel"] p {
     border-radius: 8px !important;
 }
 
-.stTextInput input:focus, .stNumberInput input:focus {
-    border-color: #10b981 !important;
-    box-shadow: 0 0 0 1px #10b981 !important;
+.stTextInput input::placeholder, .stNumberInput input::placeholder {
+    color: #94a3b8 !important;
 }
 
-/* SELECTBOX / DROPDOWN FIX (REMOVES BLACK BOX) */
-div[data-baseweb="select"] {
-    background-color: #ffffff !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 8px !important;
-}
-
+/* COMPLETE SELECTBOX / DROPDOWN OVERRIDE (FIXES BLACK BAR) */
+div[data-baseweb="select"],
 div[data-baseweb="select"] * {
     background-color: #ffffff !important;
+    background: #ffffff !important;
     color: #0f172a !important;
+    border-color: #cbd5e1 !important;
 }
 
-/* FILE UPLOADER FIX (REMOVES BLACK BOX) */
-[data-testid="stFileUploader"] {
+div[data-baseweb="select"] svg {
+    fill: #475569 !important;
+}
+
+/* COMPLETE FILE UPLOADER OVERRIDE (FIXES BLACK UPLOAD BUTTON) */
+[data-testid="stFileUploader"],
+[data-testid="stFileUploader"] section {
     background-color: #ffffff !important;
     border: 1px dashed #cbd5e1 !important;
     border-radius: 10px !important;
-    padding: 12px;
 }
 
 [data-testid="stFileUploaderDropzone"] {
     background-color: #f8fafc !important;
 }
 
-[data-testid="stFileUploaderDropzone"] * {
-    color: #334155 !important;
-}
-
-/* CHAT INPUT FIX (REMOVES BLACK BOX) */
-[data-testid="stChatInput"] {
-    background-color: #ffffff !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 10px !important;
-}
-
-[data-testid="stChatInput"] textarea {
+/* Targeting the Upload/Browse button specifically */
+[data-testid="stFileUploaderDropzone"] button,
+[data-testid="stFileUploaderDropzone"] button * {
     background-color: #ffffff !important;
     color: #0f172a !important;
+    border: 1px solid #cbd5e1 !important;
 }
 
-[data-testid="stChatInput"] button {
-    color: #10b981 !important;
+[data-testid="stFileUploaderDropzone"] button:hover {
+    border-color: #10b981 !important;
+    color: #059669 !important;
 }
 
-/* BUTTONS */
+[data-testid="stFileUploaderDropzone"] span,
+[data-testid="stFileUploaderDropzone"] small {
+    color: #475569 !important;
+}
+
+/* ALL REGULAR BUTTONS */
 .stButton > button {
-    border-radius: 8px;
-    border: 1px solid #cbd5e1;
-    background: #ffffff;
-    color: #1e293b;
-    font-weight: 600;
+    border-radius: 8px !important;
+    border: 1px solid #cbd5e1 !important;
+    background-color: #ffffff !important;
+    color: #1e293b !important;
+    font-weight: 600 !important;
 }
 
 .stButton > button:hover {
-    border-color: #10b981;
-    color: #059669;
+    border-color: #10b981 !important;
+    color: #059669 !important;
 }
 
+/* PRIMARY BUTTONS (GREEN) */
 button[kind="primary"] {
-    background: #10b981 !important;
+    background-color: #10b981 !important;
     border-color: #10b981 !important;
     color: #ffffff !important;
 }
 
+button[kind="primary"] * {
+    color: #ffffff !important;
+}
+
 button[kind="primary"]:hover {
-    background: #059669 !important;
+    background-color: #059669 !important;
     border-color: #059669 !important;
 }
 
-/* EXPANDER & CHAT MESSAGES */
-[data-testid="stExpander"] {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
+/* CHAT INPUT FIX (REMOVES BLACK BAR) */
+[data-testid="stChatInput"],
+[data-testid="stChatInput"] * {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
 }
 
-[data-testid="stChatMessage"] {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    color: #0f172a;
+[data-testid="stChatInput"] {
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 10px !important;
+}
+
+[data-testid="stChatInput"] button svg {
+    fill: #10b981 !important;
+}
+
+/* EXPANDER & CHAT CARDS */
+[data-testid="stExpander"], [data-testid="stChatMessage"] {
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 10px !important;
+    color: #0f172a !important;
 }
 </style>""",
     unsafe_allow_html=True,

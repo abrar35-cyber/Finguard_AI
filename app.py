@@ -113,49 +113,6 @@ header[data-testid="stHeader"] {
     margin-bottom: 25px;
 }
 
-.ai-engine-card {
-    background: linear-gradient(145deg, rgba(17,24,39,0.98), rgba(10,15,23,0.98));
-    border: 1px solid #243044;
-    border-radius: 16px;
-    padding: 18px 22px;
-    margin-bottom: 25px;
-}
-
-.ai-engine-label {
-    color: #64748b;
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 1.4px;
-}
-
-.ai-engine-model {
-    color: white;
-    font-size: 17px;
-    font-weight: 700;
-    margin-top: 4px;
-}
-
-.ai-engine-provider {
-    color: #9ca3af;
-    font-size: 11px;
-    margin-top: 2px;
-}
-
-.ai-online {
-    color: #10b981;
-    font-size: 11px;
-    font-weight: 700;
-}
-
-.status-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #10b981;
-    margin-right: 6px;
-}
-
 .metric-card {
     background: linear-gradient(145deg, #111722, #0c1119);
     border: 1px solid #202938;
@@ -266,27 +223,6 @@ st.markdown('<div class="main-subtitle">Intelligent multi-agent bill management,
 
 
 # =========================================================
-# AI STATUS BAR
-# =========================================================
-st.markdown(
-"""<div class="ai-engine-card">
-<div style="display:flex; justify-content:space-between; align-items:center;">
-    <div>
-        <div class="ai-engine-label">AI MULTI-AGENT ENGINE</div>
-        <div class="ai-engine-model">LLaMA 3.3 / Groq Cloud</div>
-        <div class="ai-engine-provider">Autonomous Financial Agents Connected</div>
-    </div>
-    <div>
-        <span class="status-dot"></span>
-        <span class="ai-online">ONLINE</span>
-    </div>
-</div>
-</div>""",
-    unsafe_allow_html=True,
-)
-
-
-# =========================================================
 # STATS METRICS
 # =========================================================
 bills = get_bills() if "get_bills" in globals() else []
@@ -356,7 +292,7 @@ f"""<div style="display:flex; justify-content:space-between; align-items:center;
 # =========================================================
 with st.container(border=True):
     st.markdown('<div class="section-title">Scan Bill (OCR Agent)</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Upload bill receipt to extract provider, due date, and amount</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Upload utility bill to extract provider, due date, and amount</div>', unsafe_allow_html=True)
 
     uploaded_file = st.file_uploader("Upload utility bill", type=["png", "jpg", "jpeg"], key="bill_upload")
 

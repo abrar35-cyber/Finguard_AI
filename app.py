@@ -55,7 +55,7 @@ except Exception:
 
 
 # =========================================================
-# CSS STYLING
+# CSS STYLING (GREEN & WHITE LIGHT THEME)
 # =========================================================
 st.markdown(
 """<style>
@@ -67,10 +67,10 @@ html, body, [class*="css"] {
 
 .stApp {
     background:
-        radial-gradient(circle at 15% 0%, rgba(16,185,129,0.08), transparent 28%),
-        radial-gradient(circle at 90% 10%, rgba(99,102,241,0.07), transparent 28%),
-        #080b12;
-    color: #f8fafc;
+        radial-gradient(circle at 10% 0%, rgba(16, 185, 129, 0.08), transparent 28%),
+        radial-gradient(circle at 90% 10%, rgba(16, 185, 129, 0.05), transparent 28%),
+        #f8fafc;
+    color: #0f172a;
 }
 
 section[data-testid="stSidebar"] {
@@ -92,7 +92,7 @@ header[data-testid="stHeader"] {
 }
 
 .hero-small {
-    color: #10b981;
+    color: #059669;
     font-size: 11px;
     font-weight: 800;
     letter-spacing: 2px;
@@ -100,7 +100,7 @@ header[data-testid="stHeader"] {
 }
 
 .main-title {
-    color: white;
+    color: #0f172a;
     font-size: 38px;
     font-weight: 800;
     letter-spacing: -1.5px;
@@ -108,105 +108,113 @@ header[data-testid="stHeader"] {
 }
 
 .main-subtitle {
-    color: #8b95a7;
+    color: #64748b;
     font-size: 14px;
     margin-bottom: 25px;
 }
 
 .metric-card {
-    background: linear-gradient(145deg, #111722, #0c1119);
-    border: 1px solid #202938;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 14px;
     padding: 18px;
     min-height: 115px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03);
 }
 
 .metric-label {
-    color: #7d8798;
+    color: #64748b;
     font-size: 11px;
     font-weight: 600;
+    text-transform: uppercase;
 }
 
 .metric-value {
-    color: white;
+    color: #047857;
     font-size: 24px;
     font-weight: 800;
     margin-top: 8px;
 }
 
 .metric-small {
-    color: #64748b;
+    color: #94a3b8;
     font-size: 11px;
     margin-top: 4px;
 }
 
 .section-title {
-    color: white;
+    color: #0f172a;
     font-size: 18px;
     font-weight: 700;
     margin-bottom: 3px;
 }
 
 .section-subtitle {
-    color: #6b7280;
+    color: #64748b;
     font-size: 12px;
     margin-bottom: 16px;
 }
 
 div[data-testid="stVerticalBlockBorderWrapper"] {
-    background: #0d131c;
-    border: 1px solid #202938 !important;
+    background: #ffffff;
+    border: 1px solid #e2e8f0 !important;
     border-radius: 14px;
     padding: 18px;
     margin-top: 15px;
     margin-bottom: 15px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03);
 }
 
 .stTextInput input,
 .stNumberInput input,
 .stTextArea textarea,
 .stSelectbox div[data-baseweb="select"] {
-    background: #0d131c !important;
-    color: white !important;
-    border-color: #273244 !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border: 1px solid #cbd5e1 !important;
     border-radius: 9px !important;
 }
 
 [data-testid="stFileUploader"] {
-    background: #0d131c;
-    border: 1px dashed #334155;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
     border-radius: 12px;
     padding: 10px;
 }
 
 .stButton > button {
     border-radius: 9px;
-    border: 1px solid #273244;
-    background: #121925;
-    color: white;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #0f172a;
     font-weight: 600;
 }
 
 .stButton > button:hover {
     border-color: #10b981;
-    color: #10b981;
+    color: #059669;
 }
 
 button[kind="primary"] {
     background: #10b981 !important;
     border-color: #10b981 !important;
-    color: #06130f !important;
+    color: #ffffff !important;
+}
+
+button[kind="primary"]:hover {
+    background: #059669 !important;
+    border-color: #059669 !important;
 }
 
 [data-testid="stChatMessage"] {
-    background: #0d131c;
-    border: 1px solid #202938;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 12px;
 }
 
 [data-testid="stExpander"] {
-    background: #0d131c;
-    border: 1px solid #202938;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 10px;
 }
 </style>""",
@@ -271,14 +279,14 @@ with st.container(border=True):
         for bill in bills[:5]:
             b_id, b_type, prov, cons, amt, due, status, created = bill
             st.markdown(
-f"""<div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #1c2532;">
+f"""<div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #f1f5f9;">
     <div>
-        <div style="color:white; font-weight:600;">{prov or b_type or "Utility Bill"}</div>
-        <div style="color:#667085; font-size:11px; margin-top:3px;">Account: {cons or "N/A"}</div>
+        <div style="color:#0f172a; font-weight:600;">{prov or b_type or "Utility Bill"}</div>
+        <div style="color:#64748b; font-size:11px; margin-top:3px;">Account: {cons or "N/A"}</div>
     </div>
     <div style="text-align:right;">
-        <div style="color:white; font-weight:700;">PKR {float(amt or 0):,.0f}</div>
-        <div style="color:#10b981; font-size:11px;">{status}</div>
+        <div style="color:#047857; font-weight:700;">PKR {float(amt or 0):,.0f}</div>
+        <div style="color:#10b981; font-size:11px; font-weight:600;">{status}</div>
     </div>
 </div>""",
                 unsafe_allow_html=True,
@@ -314,7 +322,6 @@ with st.container(border=True):
             else:
                 st.warning("OCR Service not installed. Please input manually.")
 
-    # Bill Input Fields
     col_a, col_b = st.columns(2)
     with col_a:
         provider = st.text_input("Provider", value=st.session_state.get("scan_provider", ""), placeholder="KE, LESCO, SSGC, PTCL")
@@ -442,7 +449,7 @@ Provide a crisp, clear, and helpful response regarding their financial bills."""
 # FOOTER
 # =========================================================
 st.markdown(
-"""<div style="text-align:center; color:#475569; font-size:11px; margin-top:40px; padding-top:20px; border-top:1px solid #18202c;">
+"""<div style="text-align:center; color:#94a3b8; font-size:11px; margin-top:40px; padding-top:20px; border-top:1px solid #e2e8f0;">
     FINGUARD AI • Intelligent Multi-Agent Financial Assistant • Groq
 </div>""",
     unsafe_allow_html=True,

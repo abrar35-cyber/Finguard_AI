@@ -1,17 +1,30 @@
-import streamlit as st
+import os
+import re
+import sqlite3
+from datetime import datetime
+from pathlib import Path
 
-from bill_finder_agent import find_bills
-from bill_intelligence_agent import analyze_bill
-from reminder_agent import get_reminder_status
-from payment_agent import make_payment
-from ocr_service import extract_text_from_image
-from database import (
-    init_db,
-    save_bill,
-    get_bills,
-    mark_bill_paid,
-    save_payment,
-    get_payment_history,
+import streamlit as st
+from groq import Groq
+
+# Optional OCR
+try:
+    import pytesseract
+    from PIL import Image
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+
+
+# =========================================================
+# PAGE CONFIG
+# =========================================================
+
+st.set_page_config(
+    page_title="Finguard AI",
+    page_icon="💳",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 
@@ -19,14 +32,29 @@ from database import (
 # CONFIG
 # =========================================================
 
-st.set_page_config(
-    page_title="Finguard AI",
-    page_icon="💳",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+APP_NAME = "FINGUARD AI"
+DB_FILE = "finguard.db"
 
-init_db()
+DEFAULT_MODEL = "openai/gpt-oss-120b"
+
+# Streamlit secrets first, environment variable second
+try:
+    GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
+    GROQ_MODEL = st.secrets.get("GROQ_MODEL", DEFAULT_MODEL)
+except Exception:
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL = os.getenv("GROQ_MODEL", DEFAULT_MODEL)
+
+if not GROQ_API_KEY:
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+
+client = None
+
+if GROQ_API_KEY:
+    try:
+        client = Groq(api_key=GROQ_API_KEY)
+    except Exception:
+        client = None
 
 
 # =========================================================
@@ -35,300 +63,565 @@ init_db()
 
 st.markdown(
     """
-    <style>
-
-    /* ---------- GLOBAL ---------- */
-
-    .stApp {
-        background: #f6f8fc;
-    }
-
-    .main .block-container {
-        padding-top: 2rem;
-        padding-bottom: 3rem;
-        max-width: 1400px;
-    }
-
-    h1, h2, h3 {
-        color: #172033 !important;
-        font-weight: 700 !important;
-    }
-
-    p, span, label {
-        color: #596579;
-    }
-
-
-    /* ---------- SIDEBAR ---------- */
-
-    section[data-testid="stSidebar"] {
-        background: #111827;
-        border-right: none;
-    }
-
-    section[data-testid="stSidebar"] * {
-        color: #e5e7eb !important;
-    }
-
-    section[data-testid="stSidebar"] .stRadio label {
-        padding: 10px 12px;
-        border-radius: 10px;
-        margin-bottom: 4px;
-    }
-
-    section[data-testid="stSidebar"] .stRadio label:hover {
-        background: #1f2937;
-    }
-
-    .sidebar-logo {
-        font-size: 25px;
-        font-weight: 800;
-        color: white !important;
-        margin-bottom: 2px;
-    }
-
-    .sidebar-subtitle {
-        font-size: 12px;
-        color: #9ca3af !important;
-        margin-bottom: 30px;
-    }
-
-
-    /* ---------- TOP BAR ---------- */
-
-    .topbar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 25px;
-    }
-
-    .welcome-text {
-        font-size: 14px;
-        color: #7b8494;
-        margin-bottom: 3px;
-    }
-
-    .page-title {
-        font-size: 30px;
-        font-weight: 800;
-        color: #172033;
-    }
-
-
-    /* ---------- CARDS ---------- */
-
-    .metric-card {
-        background: white;
-        border: 1px solid #e7ebf2;
-        border-radius: 18px;
-        padding: 22px;
-        min-height: 130px;
-        box-shadow: 0 4px 16px rgba(17, 24, 39, 0.04);
-    }
-
-    .metric-label {
-        font-size: 13px;
-        color: #7b8494;
-        margin-bottom: 10px;
-    }
-
-    .metric-value {
-        font-size: 29px;
-        font-weight: 800;
-        color: #172033;
-    }
-
-    .metric-small {
-        font-size: 12px;
-        color: #7b8494;
-        margin-top: 7px;
-    }
-
-
-    /* ---------- BILL CARD ---------- */
-
-    .bill-card {
-        background: white;
-        border: 1px solid #e7ebf2;
-        border-radius: 18px;
-        padding: 20px;
-        margin-bottom: 14px;
-        box-shadow: 0 4px 14px rgba(17, 24, 39, 0.035);
-    }
-
-    .bill-provider {
-        font-size: 17px;
-        font-weight: 750;
-        color: #172033;
-    }
-
-    .bill-type {
-        font-size: 12px;
-        color: #8a94a6;
-        margin-top: 3px;
-    }
-
-    .bill-amount {
-        font-size: 22px;
-        font-weight: 800;
-        color: #172033;
-    }
-
-    .bill-meta {
-        font-size: 13px;
-        color: #697386;
-        margin-top: 5px;
-    }
-
-
-    /* ---------- STATUS ---------- */
-
-    .status-paid {
-        display: inline-block;
-        background: #e9f9f0;
-        color: #16834b;
-        padding: 5px 10px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: 700;
-    }
-
-    .status-pending {
-        display: inline-block;
-        background: #fff5dc;
-        color: #a66a00;
-        padding: 5px 10px;
-        border-radius: 20px;
-        font-size: 11px;
-        font-weight: 700;
-    }
-
-
-    /* ---------- HERO ---------- */
-
-    .hero {
-        background: linear-gradient(
-            135deg,
-            #111827 0%,
-            #1e293b 55%,
-            #263b67 100%
-        );
-        border-radius: 24px;
-        padding: 30px;
-        margin-bottom: 25px;
-        color: white;
-        box-shadow: 0 12px 35px rgba(17, 24, 39, 0.15);
-    }
-
-    .hero-small {
-        color: #aeb9ca;
-        font-size: 13px;
-        margin-bottom: 10px;
-    }
-
-    .hero-title {
-        color: white !important;
-        font-size: 30px;
-        font-weight: 800;
-        margin-bottom: 8px;
-    }
-
-    .hero-description {
-        color: #c8d1df !important;
-        font-size: 14px;
-        max-width: 650px;
-        line-height: 1.6;
-    }
-
-
-    /* ---------- SECTION ---------- */
-
-    .section-title {
-        font-size: 19px;
-        font-weight: 750;
-        color: #172033;
-        margin-top: 25px;
-        margin-bottom: 14px;
-    }
-
-
-    /* ---------- BUTTONS ---------- */
-
-    .stButton > button {
-        border-radius: 10px;
-        border: none;
-        font-weight: 650;
-        min-height: 42px;
-        transition: all 0.2s ease;
-    }
-
-    .stButton > button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 14px rgba(17, 24, 39, 0.10);
-    }
-
-
-    /* ---------- INPUTS ---------- */
-
-    .stTextInput input,
-    .stTextArea textarea,
-    .stFileUploader {
-        border-radius: 12px !important;
-    }
-
-
-    /* ---------- DIVIDER ---------- */
-
-    hr {
-        border-color: #e8ebf1 !important;
-    }
-
-
-    /* ---------- INFO BOX ---------- */
-
-    .info-card {
-        background: #eef4ff;
-        border: 1px solid #d9e6ff;
-        border-radius: 15px;
-        padding: 17px;
-        color: #34517f;
-        font-size: 13px;
-        line-height: 1.6;
-        margin-bottom: 20px;
-    }
-
-
-    /* ---------- PAYMENT CARD ---------- */
-
-    .payment-card {
-        background: white;
-        border: 1px solid #e7ebf2;
-        border-radius: 20px;
-        padding: 24px;
-        margin-bottom: 18px;
-        box-shadow: 0 5px 18px rgba(17, 24, 39, 0.05);
-    }
-
-
-    /* ---------- HIDE STREAMLIT DEFAULT ---------- */
-
-    #MainMenu {
-        visibility: hidden;
-    }
-
-    footer {
-        visibility: hidden;
-    }
-
-    header {
-        background: transparent !important;
-    }
-
-    </style>
-    """,
-    unsafe_allow_html=True
+<style>
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+}
+
+.stApp {
+    background:
+        radial-gradient(circle at 20% 0%, rgba(99,102,241,0.08), transparent 28%),
+        radial-gradient(circle at 90% 10%, rgba(16,185,129,0.06), transparent 25%),
+        #080b12;
+    color: #f8fafc;
+}
+
+/* Sidebar */
+
+section[data-testid="stSidebar"] {
+    background: #0b0f17;
+    border-right: 1px solid #1d2430;
+}
+
+section[data-testid="stSidebar"] > div {
+    padding-top: 1.5rem;
+}
+
+.sidebar-brand {
+    padding: 4px 8px 20px 8px;
+}
+
+.sidebar-brand .brand {
+    color: white;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+}
+
+.sidebar-brand .brand span {
+    color: #10b981;
+}
+
+.sidebar-brand .sub {
+    color: #6b7280;
+    font-size: 11px;
+    margin-top: 5px;
+}
+
+.nav-title {
+    color: #4b5563;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    margin: 22px 8px 8px 8px;
+}
+
+.ai-engine {
+    margin: 20px 4px 8px 4px;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid #202938;
+    background: #0f141e;
+}
+
+.ai-engine-title {
+    color: #6b7280;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    margin-bottom: 8px;
+}
+
+.ai-engine-model {
+    color: white;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.ai-engine-provider {
+    color: #9ca3af;
+    font-size: 11px;
+    margin-top: 4px;
+}
+
+.status-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #10b981;
+    margin-right: 5px;
+}
+
+.status-dot.offline {
+    background: #ef4444;
+}
+
+/* Main */
+
+.main-title {
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: -1.3px;
+    color: white;
+    margin-bottom: 2px;
+}
+
+.main-subtitle {
+    color: #8b95a7;
+    font-size: 14px;
+    margin-bottom: 26px;
+}
+
+.hero-small {
+    color: #10b981;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    margin-bottom: 7px;
+}
+
+/* Cards */
+
+.metric-card {
+    background: linear-gradient(145deg, #111722, #0c1119);
+    border: 1px solid #202938;
+    border-radius: 14px;
+    padding: 18px;
+    min-height: 115px;
+}
+
+.metric-label {
+    color: #7d8798;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.metric-value {
+    color: white;
+    font-size: 27px;
+    font-weight: 800;
+    margin-top: 8px;
+}
+
+.metric-small {
+    color: #64748b;
+    font-size: 11px;
+    margin-top: 4px;
+}
+
+/* Sections */
+
+.section-card {
+    background: #0d131c;
+    border: 1px solid #202938;
+    border-radius: 15px;
+    padding: 20px;
+    margin-top: 18px;
+}
+
+.section-title {
+    color: white;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.section-subtitle {
+    color: #6b7280;
+    font-size: 12px;
+    margin-bottom: 16px;
+}
+
+/* Buttons */
+
+.stButton > button {
+    border-radius: 9px;
+    border: 1px solid #273244;
+    background: #121925;
+    color: white;
+    font-weight: 600;
+    transition: 0.2s;
+}
+
+.stButton > button:hover {
+    border-color: #10b981;
+    color: #10b981;
+}
+
+/* Primary button */
+
+button[kind="primary"] {
+    background: #10b981 !important;
+    border-color: #10b981 !important;
+    color: #06130f !important;
+}
+
+/* Inputs */
+
+.stTextInput input,
+.stNumberInput input,
+.stTextArea textarea,
+.stSelectbox div[data-baseweb="select"] {
+    background: #0d131c !important;
+    color: white !important;
+    border-color: #273244 !important;
+    border-radius: 9px !important;
+}
+
+/* File uploader */
+
+[data-testid="stFileUploader"] {
+    background: #0d131c;
+    border: 1px dashed #334155;
+    border-radius: 12px;
+    padding: 10px;
+}
+
+/* Alerts */
+
+div[data-testid="stAlert"] {
+    border-radius: 10px;
+}
+
+/* Tables */
+
+[data-testid="stDataFrame"] {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+/* Hide Streamlit menu/footer */
+
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+header[data-testid="stHeader"] {
+    background: transparent;
+}
+
+</style>
+""",
+    unsafe_allow_html=True,
 )
+
+
+# =========================================================
+# DATABASE
+# =========================================================
+
+def get_connection():
+    return sqlite3.connect(DB_FILE)
+
+
+def init_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS bills (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bill_type TEXT,
+            provider TEXT,
+            consumer_number TEXT,
+            amount REAL,
+            due_date TEXT,
+            status TEXT DEFAULT 'Pending',
+            extracted_text TEXT,
+            created_at TEXT
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bill_id INTEGER,
+            amount REAL,
+            payment_method TEXT,
+            status TEXT,
+            paid_at TEXT
+        )
+        """
+    )
+
+    conn.commit()
+    conn.close()
+
+
+init_db()
+
+
+# =========================================================
+# DATABASE HELPERS
+# =========================================================
+
+def get_bills():
+    conn = get_connection()
+
+    rows = conn.execute(
+        """
+        SELECT
+            id,
+            bill_type,
+            provider,
+            consumer_number,
+            amount,
+            due_date,
+            status,
+            created_at
+        FROM bills
+        ORDER BY id DESC
+        """
+    ).fetchall()
+
+    conn.close()
+
+    return rows
+
+
+def get_payments():
+    conn = get_connection()
+
+    rows = conn.execute(
+        """
+        SELECT
+            payments.id,
+            bills.provider,
+            payments.amount,
+            payments.payment_method,
+            payments.status,
+            payments.paid_at
+        FROM payments
+        LEFT JOIN bills
+        ON payments.bill_id = bills.id
+        ORDER BY payments.id DESC
+        """
+    ).fetchall()
+
+    conn.close()
+
+    return rows
+
+
+def add_bill(
+    bill_type,
+    provider,
+    consumer_number,
+    amount,
+    due_date,
+    extracted_text,
+):
+    conn = get_connection()
+
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO bills
+        (
+            bill_type,
+            provider,
+            consumer_number,
+            amount,
+            due_date,
+            status,
+            extracted_text,
+            created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            bill_type,
+            provider,
+            consumer_number,
+            amount,
+            due_date,
+            "Pending",
+            extracted_text,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+    )
+
+    bill_id = cursor.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return bill_id
+
+
+def add_payment(bill_id, amount, method):
+    conn = get_connection()
+
+    conn.execute(
+        """
+        INSERT INTO payments
+        (
+            bill_id,
+            amount,
+            payment_method,
+            status,
+            paid_at
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            bill_id,
+            amount,
+            method,
+            "Successful",
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+    )
+
+    conn.execute(
+        """
+        UPDATE bills
+        SET status = 'Paid'
+        WHERE id = ?
+        """,
+        (bill_id,),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+# =========================================================
+# OCR
+# =========================================================
+
+def extract_text_from_image(uploaded_file):
+    if not OCR_AVAILABLE:
+        return ""
+
+    try:
+        image = Image.open(uploaded_file)
+
+        text = pytesseract.image_to_string(image)
+
+        return text.strip()
+
+    except Exception:
+        return ""
+
+
+# =========================================================
+# BILL INFORMATION EXTRACTION
+# =========================================================
+
+def extract_amount(text):
+    if not text:
+        return 0.0
+
+    patterns = [
+        r"(?:total|amount|payable|bill amount|net payable)[^\d]{0,20}([\d,]+(?:\.\d{1,2})?)",
+        r"Rs\.?\s*([\d,]+(?:\.\d{1,2})?)",
+        r"PKR\s*([\d,]+(?:\.\d{1,2})?)",
+    ]
+
+    for pattern in patterns:
+        matches = re.findall(pattern, text, flags=re.IGNORECASE)
+
+        if matches:
+            try:
+                value = matches[-1].replace(",", "")
+                return float(value)
+            except Exception:
+                pass
+
+    return 0.0
+
+
+def extract_consumer_number(text):
+    if not text:
+        return ""
+
+    patterns = [
+        r"(?:consumer|customer|reference|account)\s*(?:no|number|#)?\s*[:\-]?\s*([A-Za-z0-9\-]{6,30})",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+
+        if match:
+            return match.group(1)
+
+    return ""
+
+
+def detect_provider(text):
+    text_lower = text.lower()
+
+    providers = {
+        "KE": ["k-electric", "k electric", "k-electricity"],
+        "LESCO": ["lesco"],
+        "FESCO": ["fesco"],
+        "IESCO": ["iesco"],
+        "MEPCO": ["mepco"],
+        "PESCO": ["pesco"],
+        "SNGPL": ["sngpl"],
+        "SSGC": ["ssgc"],
+        "PTCL": ["ptcl"],
+    }
+
+    for provider, keywords in providers.items():
+        for keyword in keywords:
+            if keyword in text_lower:
+                return provider
+
+    return "Unknown"
+
+
+# =========================================================
+# GROQ AI
+# =========================================================
+
+def ask_groq(prompt):
+    if client is None:
+        return (
+            "AI service is not connected. "
+            "Please add GROQ_API_KEY to Streamlit Secrets."
+        )
+
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are Finguard AI, an AI financial assistant "
+                        "for bill management and payment assistance. "
+                        "Give concise, practical and clear answers. "
+                        "Do not claim to have completed a real payment "
+                        "unless the application actually confirms it."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            temperature=0.2,
+            max_tokens=700,
+        )
+
+        return response.choices[0].message.content
+
+    except Exception as e:
+        return f"AI request failed: {str(e)}"
 
 
 # =========================================================
@@ -338,66 +631,66 @@ st.markdown(
 with st.sidebar:
 
     st.markdown(
-        '<div class="sidebar-logo">Finguard AI</div>',
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        '<div class="sidebar-subtitle">'
-        'Smart Bill Management'
-        '</div>',
-        unsafe_allow_html=True
+        """
+        <div class="sidebar-brand">
+            <div class="brand">FIN<span>GUARD</span> AI</div>
+            <div class="sub">Intelligent Bill Management</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     page = st.radio(
         "Navigation",
         [
             "Dashboard",
+            "Scan Bill",
             "My Bills",
-            "AI Assistant",
-            "Upload Bill",
             "Payments",
-            "History"
+            "AI Assistant",
         ],
-        label_visibility="collapsed"
+        label_visibility="collapsed",
     )
 
-    st.markdown("---")
+    st.markdown(
+        '<div class="nav-title">AI ENGINE</div>',
+        unsafe_allow_html=True,
+    )
+
+    if client:
+        status_html = (
+            '<span class="status-dot"></span>'
+            '<span style="color:#10b981;font-size:10px;">ONLINE</span>'
+        )
+    else:
+        status_html = (
+            '<span class="status-dot offline"></span>'
+            '<span style="color:#ef4444;font-size:10px;">OFFLINE</span>'
+        )
 
     st.markdown(
-        """
-        <div style="
-            background:#1f2937;
-            border-radius:14px;
-            padding:15px;
-            margin-top:20px;
-        ">
-            <div style="
-                color:#9ca3af;
-                font-size:11px;
-                margin-bottom:5px;
-            ">
+        f"""
+        <div class="ai-engine">
+
+            <div class="ai-engine-title">
                 AI ENGINE
             </div>
 
-            <div style="
-                color:white;
-                font-weight:700;
-                font-size:13px;
-            ">
+            <div class="ai-engine-model">
                 GPT-OSS 120B
             </div>
 
-            <div style="
-                color:#9ca3af;
-                font-size:11px;
-                margin-top:4px;
-            ">
+            <div class="ai-engine-provider">
                 Powered by Groq
             </div>
+
+            <div style="margin-top:10px;">
+                {status_html}
+            </div>
+
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
 
@@ -408,359 +701,268 @@ with st.sidebar:
 if page == "Dashboard":
 
     st.markdown(
-        """
-        <div class="topbar">
-            <div>
-                <div class="welcome-text">
-                    Welcome back
-                </div>
-                <div class="page-title">
-                    Your financial overview
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
+        '<div class="hero-small">FINANCIAL CONTROL CENTER</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="main-title">Welcome to Finguard AI</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="main-subtitle">'
+        'Manage, analyze and track your bills with AI-powered assistance.'
+        '</div>',
+        unsafe_allow_html=True,
     )
 
     bills = get_bills()
+    payments = get_payments()
 
     total_bills = len(bills)
+    paid_bills = len([b for b in bills if b[6] == "Paid"])
+    pending_bills = len([b for b in bills if b[6] != "Paid"])
 
-    unpaid_bills = sum(
-        1
-        for bill in bills
-        if bill.get("status") != "paid"
-    )
+    total_amount = sum(float(b[4] or 0) for b in bills)
+    paid_amount = sum(float(p[2] or 0) for p in payments)
 
-    paid_bills = sum(
-        1
-        for bill in bills
-        if bill.get("status") == "paid"
-    )
+    c1, c2, c3, c4 = st.columns(4)
 
-    total_pending_amount = sum(
-        float(bill.get("amount") or 0)
-        for bill in bills
-        if bill.get("status") != "paid"
-    )
+    with c1:
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">TOTAL BILLS</div>
+                <div class="metric-value">{total_bills}</div>
+                <div class="metric-small">Tracked bills</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    # ---------------------------------------------
-    # HERO
-    # ---------------------------------------------
+    with c2:
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">PENDING</div>
+                <div class="metric-value">{pending_bills}</div>
+                <div class="metric-small">Require attention</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with c3:
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">TOTAL VALUE</div>
+                <div class="metric-value">PKR {total_amount:,.0f}</div>
+                <div class="metric-small">Bills tracked</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with c4:
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">PAID</div>
+                <div class="metric-value">PKR {paid_amount:,.0f}</div>
+                <div class="metric-small">{paid_bills} completed payments</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     st.markdown(
         """
-        <div class="hero">
-
-            <div class="hero-small">
-                FINGUARD AI
+        <div class="section-card">
+            <div class="section-title">Recent Bills</div>
+            <div class="section-subtitle">
+                Your latest bill activity
             </div>
-
-            <div class="hero-title">
-                Your bills, managed intelligently.
-            </div>
-
-            <div class="hero-description">
-                Automatically discover bills, understand their
-                amounts and due dates, receive reminders and
-                authorize payments from one place.
-            </div>
-
-        </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
-    # ---------------------------------------------
-    # METRICS
-    # ---------------------------------------------
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <div class="metric-label">
-                    TOTAL BILLS
-                </div>
-                <div class="metric-value">
-                    {total_bills}
-                </div>
-                <div class="metric-small">
-                    Bills discovered
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with col2:
-
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <div class="metric-label">
-                    PENDING
-                </div>
-                <div class="metric-value">
-                    {unpaid_bills}
-                </div>
-                <div class="metric-small">
-                    Awaiting payment
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with col3:
-
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <div class="metric-label">
-                    PAID
-                </div>
-                <div class="metric-value">
-                    {paid_bills}
-                </div>
-                <div class="metric-small">
-                    Successfully completed
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    with col4:
-
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <div class="metric-label">
-                    PENDING AMOUNT
-                </div>
-                <div class="metric-value">
-                    Rs. {total_pending_amount:,.0f}
-                </div>
-                <div class="metric-small">
-                    Total outstanding
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-    # ---------------------------------------------
-    # SCAN
-    # ---------------------------------------------
-
-    st.markdown(
-        '<div class="section-title">Bill Discovery</div>',
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        """
-        <div class="info-card">
-            Finguard AI can scan connected sources, identify
-            bills and use AI to extract important information
-            such as provider, amount, account number and due date.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    if st.button(
-        "Scan Connected Sources",
-        type="primary",
-        use_container_width=True
-    ):
-
-        with st.spinner(
-            "Scanning connected sources..."
-        ):
-
-            found_bills = find_bills()
-
-        if not found_bills:
-
-            st.info(
-                "No new bills were found."
-            )
-
-        else:
-
-            found_count = len(found_bills)
-
-            analyzed_count = 0
-            failed_count = 0
-
-            st.info(
-                f"{found_count} bill(s) found"
-            )
-
-            progress = st.progress(0)
-
-            for index, raw_bill in enumerate(
-                found_bills
-            ):
-
-                try:
-
-                    analyzed_bill = analyze_bill(
-                        raw_bill
-                    )
-
-                    if analyzed_bill:
-
-                        save_bill(
-                            analyzed_bill
-                        )
-
-                        analyzed_count += 1
-
-                    else:
-
-                        failed_count += 1
-
-                except Exception as e:
-
-                    failed_count += 1
-
-                    st.error(
-                        f"Could not analyze bill: {e}"
-                    )
-
-                progress.progress(
-                    (index + 1) / found_count
-                )
-
-            if analyzed_count == found_count:
-
-                st.success(
-                    f"{found_count} bill(s) found"
-                )
-
-                st.success(
-                    f"{analyzed_count} bill(s) analyzed successfully"
-                )
-
-            else:
-
-                st.success(
-                    f"{found_count} bill(s) found"
-                )
-
-                st.warning(
-                    f"{analyzed_count} analyzed successfully, "
-                    f"{failed_count} failed."
-                )
-
-    # ---------------------------------------------
-    # RECENT BILLS
-    # ---------------------------------------------
-
-    st.markdown(
-        '<div class="section-title">Recent Bills</div>',
-        unsafe_allow_html=True
-    )
-
-    bills = get_bills()
-
-    if not bills:
-
-        st.info(
-            "No bills yet. Scan your connected sources to get started."
-        )
-
-    else:
+    if bills:
 
         for bill in bills[:5]:
 
-            provider = bill.get(
-                "provider",
-                "Unknown Provider"
-            )
+            bill_id, bill_type, provider, consumer, amount, due_date, status, created = bill
 
-            amount = bill.get(
-                "amount",
-                0
-            )
-
-            due_date = bill.get(
-                "due_date",
-                "N/A"
-            )
-
-            status = bill.get(
-                "status",
-                "pending"
-            )
-
-            if status == "paid":
-
-                status_html = (
-                    '<span class="status-paid">'
-                    'PAID'
-                    '</span>'
-                )
-
-            else:
-
-                status_html = (
-                    '<span class="status-pending">'
-                    'PENDING'
-                    '</span>'
-                )
+            status_text = status
 
             st.markdown(
                 f"""
-                <div class="bill-card">
-
-                    <div style="
-                        display:flex;
-                        justify-content:space-between;
-                        align-items:center;
-                    ">
-
-                        <div>
-
-                            <div class="bill-provider">
-                                {provider}
-                            </div>
-
-                            <div class="bill-type">
-                                {bill.get('bill_type', 'Utility Bill')}
-                            </div>
-
+                <div style="
+                    display:flex;
+                    justify-content:space-between;
+                    align-items:center;
+                    padding:12px 0;
+                    border-bottom:1px solid #1c2532;
+                ">
+                    <div>
+                        <div style="color:white;font-weight:600;">
+                            {provider or bill_type or "Bill"}
                         </div>
-
-                        <div style="text-align:right">
-
-                            <div class="bill-amount">
-                                Rs. {amount}
-                            </div>
-
-                            <div style="margin-top:5px">
-                                {status_html}
-                            </div>
-
+                        <div style="color:#667085;font-size:11px;margin-top:4px;">
+                            {consumer or "No consumer number"}
                         </div>
-
                     </div>
 
-                    <div class="bill-meta">
-                        Due date: {due_date}
+                    <div style="text-align:right;">
+                        <div style="color:white;font-weight:700;">
+                            PKR {float(amount or 0):,.0f}
+                        </div>
+                        <div style="color:#8b95a7;font-size:11px;">
+                            {status_text}
+                        </div>
                     </div>
-
                 </div>
                 """,
-                unsafe_allow_html=True
+                unsafe_allow_html=True,
             )
+
+    else:
+
+        st.info("No bills have been added yet. Go to Scan Bill to get started.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# =========================================================
+# SCAN BILL
+# =========================================================
+
+elif page == "Scan Bill":
+
+    st.markdown(
+        '<div class="hero-small">SMART BILL SCANNER</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="main-title">Scan a Bill</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="main-subtitle">'
+        'Upload a bill image and let Finguard AI extract useful information.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    uploaded_file = st.file_uploader(
+        "Upload bill image",
+        type=["png", "jpg", "jpeg"],
+    )
+
+    if uploaded_file:
+
+        st.image(
+            uploaded_file,
+            caption="Uploaded bill",
+            use_container_width=True,
+        )
+
+        if st.button("Scan & Extract Bill", type="primary"):
+
+            with st.spinner("Analyzing bill..."):
+
+                extracted_text = extract_text_from_image(uploaded_file)
+
+                if extracted_text:
+
+                    provider = detect_provider(extracted_text)
+                    amount = extract_amount(extracted_text)
+                    consumer_number = extract_consumer_number(extracted_text)
+
+                    st.session_state["scan_text"] = extracted_text
+                    st.session_state["scan_provider"] = provider
+                    st.session_state["scan_amount"] = amount
+                    st.session_state["scan_consumer"] = consumer_number
+
+                    st.success("Bill information extracted.")
+
+                else:
+
+                    st.warning(
+                        "OCR could not extract readable text from this image. "
+                        "You can enter the bill information manually below."
+                    )
+
+    st.markdown(
+        """
+        <div class="section-card">
+            <div class="section-title">Bill Information</div>
+            <div class="section-subtitle">
+                Review the extracted information before saving.
+            </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    provider = st.text_input(
+        "Provider",
+        value=st.session_state.get("scan_provider", ""),
+        placeholder="e.g. KE, LESCO, SSGC",
+    )
+
+    bill_type = st.selectbox(
+        "Bill Type",
+        [
+            "Electricity",
+            "Gas",
+            "Internet",
+            "Mobile",
+            "Water",
+            "Other",
+        ],
+    )
+
+    consumer_number = st.text_input(
+        "Consumer / Account Number",
+        value=st.session_state.get("scan_consumer", ""),
+    )
+
+    amount = st.number_input(
+        "Amount",
+        min_value=0.0,
+        value=float(st.session_state.get("scan_amount", 0.0)),
+        step=100.0,
+    )
+
+    due_date = st.text_input(
+        "Due Date",
+        placeholder="e.g. 15 October 2026",
+    )
+
+    if st.button("Save Bill", type="primary"):
+
+        extracted_text = st.session_state.get("scan_text", "")
+
+        bill_id = add_bill(
+            bill_type=bill_type,
+            provider=provider,
+            consumer_number=consumer_number,
+            amount=amount,
+            due_date=due_date,
+            extracted_text=extracted_text,
+        )
+
+        st.success(f"Bill #{bill_id} saved successfully.")
+
+        st.session_state["scan_text"] = ""
+        st.session_state["scan_provider"] = ""
+        st.session_state["scan_amount"] = 0.0
+        st.session_state["scan_consumer"] = ""
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 # =========================================================
@@ -770,388 +972,74 @@ if page == "Dashboard":
 elif page == "My Bills":
 
     st.markdown(
-        """
-        <div class="welcome-text">
-            FINGUARD AI
-        </div>
-
-        <div class="page-title">
-            My Bills
-        </div>
-        """,
-        unsafe_allow_html=True
+        '<div class="hero-small">BILL MANAGEMENT</div>',
+        unsafe_allow_html=True,
     )
 
-    st.write(
-        "All bills discovered and analyzed by Finguard AI."
+    st.markdown(
+        '<div class="main-title">My Bills</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="main-subtitle">'
+        'View and manage your saved bills.'
+        '</div>',
+        unsafe_allow_html=True,
     )
 
     bills = get_bills()
 
     if not bills:
 
-        st.info(
-            "No bills found yet."
-        )
+        st.info("No bills found.")
 
     else:
 
         for bill in bills:
 
-            provider = bill.get(
-                "provider",
-                "Unknown Provider"
-            )
+            (
+                bill_id,
+                bill_type,
+                provider,
+                consumer,
+                amount,
+                due_date,
+                status,
+                created,
+            ) = bill
 
-            amount = bill.get(
-                "amount",
-                0
-            )
-
-            status = bill.get(
-                "status",
-                "pending"
-            )
-
-            if status == "paid":
-
-                badge = (
-                    '<span class="status-paid">'
-                    'PAID'
-                    '</span>'
-                )
-
-            else:
-
-                badge = (
-                    '<span class="status-pending">'
-                    'PENDING'
-                    '</span>'
-                )
-
-            col1, col2 = st.columns(
-                [4, 1]
-            )
-
-            with col1:
-
-                st.markdown(
-                    f"""
-                    <div class="bill-card">
-
-                        <div class="bill-provider">
-                            {provider}
-                        </div>
-
-                        <div class="bill-type">
-                            {bill.get(
-                                'bill_type',
-                                'Utility Bill'
-                            )}
-                        </div>
-
-                        <div class="bill-meta">
-                            Account:
-                            {bill.get(
-                                'account_number',
-                                'N/A'
-                            )}
-                        </div>
-
-                        <div class="bill-meta">
-                            Due:
-                            {bill.get(
-                                'due_date',
-                                'N/A'
-                            )}
-                        </div>
-
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-            with col2:
-
-                st.markdown(
-                    f"""
-                    <div style="
-                        background:white;
-                        border:1px solid #e7ebf2;
-                        border-radius:18px;
-                        padding:20px;
-                        text-align:center;
-                        min-height:120px;
-                    ">
-
-                        <div class="metric-label">
-                            AMOUNT
-                        </div>
-
-                        <div class="bill-amount">
-                            Rs. {amount}
-                        </div>
-
-                        <div style="
-                            margin-top:10px;
-                        ">
-                            {badge}
-                        </div>
-
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-
-# =========================================================
-# AI ASSISTANT
-# =========================================================
-
-elif page == "AI Assistant":
-
-    st.markdown(
-        """
-        <div class="welcome-text">
-            FINGUARD AI
-        </div>
-
-        <div class="page-title">
-            AI Assistant
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.write(
-        "Ask questions about your bills and upcoming payments."
-    )
-
-    bills = get_bills()
-
-    question = st.text_input(
-        "Ask Finguard AI",
-        placeholder="Which bill is due soon?"
-    )
-
-    if st.button(
-        "Ask AI",
-        type="primary"
-    ):
-
-        if not question.strip():
-
-            st.warning(
-                "Please enter a question."
-            )
-
-        elif not bills:
-
-            st.info(
-                "You don't have any bills yet."
-            )
-
-        else:
-
-            question_lower = question.lower()
-
-            if "due" in question_lower:
-
-                st.subheader(
-                    "Upcoming Bill Status"
-                )
-
-                for bill in bills:
-
-                    status = get_reminder_status(
-                        bill.get("due_date")
-                    )
-
-                    st.markdown(
-                        f"""
-                        <div class="bill-card">
-
-                            <div class="bill-provider">
-                                {bill.get(
-                                    'provider',
-                                    'Unknown'
-                                )}
-                            </div>
-
-                            <div class="bill-meta">
-                                Rs. {bill.get(
-                                    'amount',
-                                    0
-                                )}
-                                &nbsp; • &nbsp;
-                                Due:
-                                {bill.get(
-                                    'due_date',
-                                    'N/A'
-                                )}
-                            </div>
-
-                            <div style="
-                                margin-top:10px;
-                                font-weight:600;
-                                color:#4f46e5;
-                            ">
-                                {status}
-                            </div>
-
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-
-            elif (
-                "unpaid" in question_lower
-                or "pending" in question_lower
+            with st.expander(
+                f"{provider or bill_type}  •  PKR {float(amount or 0):,.0f}"
             ):
 
-                pending = [
-                    bill
-                    for bill in bills
-                    if bill.get("status")
-                    != "paid"
-                ]
+                c1, c2 = st.columns(2)
 
-                if pending:
+                with c1:
 
-                    for bill in pending:
+                    st.write(f"**Bill Type:** {bill_type}")
+                    st.write(f"**Provider:** {provider}")
+                    st.write(f"**Consumer Number:** {consumer}")
 
-                        st.markdown(
-                            f"""
-                            <div class="bill-card">
+                with c2:
 
-                                <div class="bill-provider">
-                                    {bill.get(
-                                        'provider',
-                                        'Unknown'
-                                    )}
-                                </div>
+                    st.write(f"**Amount:** PKR {float(amount or 0):,.2f}")
+                    st.write(f"**Due Date:** {due_date or 'Not provided'}")
+                    st.write(f"**Status:** {status}")
 
-                                <div class="bill-amount">
-                                    Rs. {bill.get(
-                                        'amount',
-                                        0
-                                    )}
-                                </div>
+                if status != "Paid":
 
-                                <div class="bill-meta">
-                                    Due:
-                                    {bill.get(
-                                        'due_date',
-                                        'N/A'
-                                    )}
-                                </div>
+                    if st.button(
+                        f"Pay PKR {float(amount or 0):,.0f}",
+                        key=f"pay_{bill_id}",
+                    ):
 
-                            </div>
-                            """,
-                            unsafe_allow_html=True
+                        st.session_state["selected_bill"] = bill_id
+                        st.session_state["selected_amount"] = float(
+                            amount or 0
                         )
 
-                else:
-
-                    st.success(
-                        "You have no pending bills."
-                    )
-
-            else:
-
-                st.info(
-                    "Try asking: "
-                    "\"Which bill is due soon?\" "
-                    "or "
-                    "\"Show my pending bills.\""
-                )
-
-
-# =========================================================
-# UPLOAD BILL
-# =========================================================
-
-elif page == "Upload Bill":
-
-    st.markdown(
-        """
-        <div class="welcome-text">
-            FINGUARD AI
-        </div>
-
-        <div class="page-title">
-            Upload a Bill
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.write(
-        "Have a physical bill? Upload an image and "
-        "Finguard AI can extract its text."
-    )
-
-    uploaded_file = st.file_uploader(
-        "Upload bill image",
-        type=[
-            "png",
-            "jpg",
-            "jpeg"
-        ]
-    )
-
-    if uploaded_file:
-
-        st.image(
-            uploaded_file,
-            caption="Uploaded Bill",
-            use_container_width=True
-        )
-
-        if st.button(
-            "Extract Bill Information",
-            type="primary"
-        ):
-
-            with st.spinner(
-                "Reading your bill..."
-            ):
-
-                try:
-
-                    image_text = (
-                        extract_text_from_image(
-                            uploaded_file
-                        )
-                    )
-
-                    if image_text:
-
-                        st.success(
-                            "Bill text extracted successfully."
-                        )
-
-                        st.subheader(
-                            "Extracted Information"
-                        )
-
-                        st.text_area(
-                            "OCR Result",
-                            image_text,
-                            height=250
-                        )
-
-                    else:
-
-                        st.warning(
-                            "Could not extract readable text."
-                        )
-
-                except Exception as e:
-
-                    st.error(
-                        f"OCR failed: {e}"
-                    )
+                        st.rerun()
 
 
 # =========================================================
@@ -1161,254 +1049,221 @@ elif page == "Upload Bill":
 elif page == "Payments":
 
     st.markdown(
-        """
-        <div class="welcome-text">
-            FINGUARD AI
-        </div>
-
-        <div class="page-title">
-            Payments
-        </div>
-        """,
-        unsafe_allow_html=True
+        '<div class="hero-small">PAYMENT CENTER</div>',
+        unsafe_allow_html=True,
     )
 
-    st.write(
-        "Review and authorize your pending bills."
+    st.markdown(
+        '<div class="main-title">Payments</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="main-subtitle">'
+        'Review payment activity and complete bill payments.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    if "selected_bill" in st.session_state:
+
+        bill_id = st.session_state["selected_bill"]
+        amount = st.session_state["selected_amount"]
+
+        st.markdown(
+            """
+            <div class="section-card">
+                <div class="section-title">Complete Payment</div>
+                <div class="section-subtitle">
+                    Confirm the payment details below.
+                </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.metric(
+            "Payment Amount",
+            f"PKR {amount:,.2f}",
+        )
+
+        payment_method = st.selectbox(
+            "Payment Method",
+            [
+                "JazzCash",
+                "EasyPaisa",
+                "Bank Transfer",
+                "Debit / Credit Card",
+            ],
+        )
+
+        if st.button("Confirm Payment", type="primary"):
+
+            add_payment(
+                bill_id=bill_id,
+                amount=amount,
+                method=payment_method,
+            )
+
+            del st.session_state["selected_bill"]
+            del st.session_state["selected_amount"]
+
+            st.success(
+                "Payment recorded successfully in Finguard AI."
+            )
+
+            st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div class="section-card">
+            <div class="section-title">Payment History</div>
+            <div class="section-subtitle">
+                Your previous payment records
+            </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    payments = get_payments()
+
+    if payments:
+
+        for payment in payments:
+
+            (
+                payment_id,
+                provider,
+                amount,
+                method,
+                status,
+                paid_at,
+            ) = payment
+
+            st.markdown(
+                f"""
+                <div style="
+                    display:flex;
+                    justify-content:space-between;
+                    padding:13px 0;
+                    border-bottom:1px solid #1c2532;
+                ">
+                    <div>
+                        <div style="color:white;font-weight:600;">
+                            {provider or "Bill Payment"}
+                        </div>
+                        <div style="color:#687386;font-size:11px;margin-top:4px;">
+                            {method} • {paid_at}
+                        </div>
+                    </div>
+
+                    <div style="text-align:right;">
+                        <div style="color:white;font-weight:700;">
+                            PKR {float(amount or 0):,.0f}
+                        </div>
+                        <div style="color:#10b981;font-size:11px;">
+                            {status}
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    else:
+
+        st.info("No payments recorded yet.")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# =========================================================
+# AI ASSISTANT
+# =========================================================
+
+elif page == "AI Assistant":
+
+    st.markdown(
+        '<div class="hero-small">FINGUARD INTELLIGENCE</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="main-title">AI Assistant</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="main-subtitle">'
+        'Ask Finguard AI about your bills, payments and financial organization.'
+        '</div>',
+        unsafe_allow_html=True,
     )
 
     bills = get_bills()
 
-    pending_bills = [
-        bill
-        for bill in bills
-        if bill.get("status")
-        != "paid"
-    ]
+    bill_context = ""
 
-    if not pending_bills:
+    if bills:
 
-        st.success(
-            "You're all caught up. No pending payments."
+        bill_context = "\n".join(
+            [
+                (
+                    f"- {b[1]} | Provider: {b[2]} | "
+                    f"Amount: PKR {float(b[4] or 0):,.2f} | "
+                    f"Due: {b[5]} | Status: {b[6]}"
+                )
+                for b in bills
+            ]
         )
 
     else:
 
-        for bill in pending_bills:
+        bill_context = "No bills are currently saved."
 
-            provider = bill.get(
-                "provider",
-                "Unknown Provider"
-            )
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
 
-            amount = bill.get(
-                "amount",
-                0
-            )
+    for role, message in st.session_state.chat_history:
 
-            due_date = bill.get(
-                "due_date",
-                "N/A"
-            )
+        with st.chat_message(role):
+            st.markdown(message)
 
-            st.markdown(
-                f"""
-                <div class="payment-card">
-
-                    <div class="bill-type">
-                        PAYMENT REQUEST
-                    </div>
-
-                    <div class="bill-provider"
-                         style="font-size:21px;
-                                margin-top:5px;">
-                        {provider}
-                    </div>
-
-                    <div style="
-                        font-size:30px;
-                        font-weight:800;
-                        color:#172033;
-                        margin-top:12px;
-                    ">
-                        Rs. {amount}
-                    </div>
-
-                    <div class="bill-meta">
-                        Due date: {due_date}
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            confirm = st.checkbox(
-                f"I authorize Finguard AI to process "
-                f"the payment of Rs. {amount}.",
-                key=f"confirm_{bill.get('id')}"
-            )
-
-            if st.button(
-                "Authorize & Pay",
-                key=f"pay_{bill.get('id')}",
-                type="primary",
-                use_container_width=True
-            ):
-
-                if not confirm:
-
-                    st.warning(
-                        "Please confirm the payment authorization first."
-                    )
-
-                else:
-
-                    with st.spinner(
-                        "Processing payment..."
-                    ):
-
-                        result = make_payment(
-                            bill
-                        )
-
-                    if result.get(
-                        "success"
-                    ):
-
-                        mark_bill_paid(
-                            bill.get("id")
-                        )
-
-                        save_payment(
-                            bill,
-                            result.get(
-                                "transaction_id"
-                            )
-                        )
-
-                        st.success(
-                            "Payment successful."
-                        )
-
-                        st.info(
-                            f"Transaction ID: "
-                            f"{result.get('transaction_id')}"
-                        )
-
-                    else:
-
-                        st.error(
-                            result.get(
-                                "message",
-                                "Payment failed."
-                            )
-                        )
-
-            st.divider()
-
-
-# =========================================================
-# HISTORY
-# =========================================================
-
-elif page == "History":
-
-    st.markdown(
-        """
-        <div class="welcome-text">
-            FINGUARD AI
-        </div>
-
-        <div class="page-title">
-            Payment History
-        </div>
-        """,
-        unsafe_allow_html=True
+    prompt = st.chat_input(
+        "Ask Finguard AI about your bills..."
     )
 
-    history = get_payment_history()
+    if prompt:
 
-    if not history:
-
-        st.info(
-            "No payment history available yet."
+        st.session_state.chat_history.append(
+            ("user", prompt)
         )
 
-    else:
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-        for payment in history:
+        system_context = f"""
+User's current bill information:
 
-            st.markdown(
-                f"""
-                <div class="bill-card">
+{bill_context}
 
-                    <div style="
-                        display:flex;
-                        justify-content:space-between;
-                        align-items:center;
-                    ">
+User question:
+{prompt}
 
-                        <div>
+Provide a concise and useful response based on the available bill
+information. If the required information is unavailable, clearly say so.
+Do not claim that a payment was made unless the database shows it.
+"""
 
-                            <div class="bill-provider">
-                                {payment.get(
-                                    'provider',
-                                    'Unknown'
-                                )}
-                            </div>
+        with st.chat_message("assistant"):
 
-                            <div class="bill-meta">
-                                Payment completed
-                            </div>
+            with st.spinner("Finguard AI is thinking..."):
 
-                        </div>
+                answer = ask_groq(system_context)
 
-                        <div style="
-                            text-align:right;
-                        ">
+                st.markdown(answer)
 
-                            <div class="bill-amount">
-                                Rs. {payment.get(
-                                    'amount',
-                                    0
-                                )}
-                            </div>
-
-                            <div style="
-                                color:#16834b;
-                                font-size:12px;
-                                font-weight:700;
-                                margin-top:5px;
-                            ">
-                                COMPLETED
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                    <div class="bill-meta"
-                         style="margin-top:15px;">
-
-                        Transaction ID:
-                        {payment.get(
-                            'transaction_id',
-                            'N/A'
-                        )}
-
-                    </div>
-
-                    <div class="bill-meta">
-
-                        {payment.get(
-                            'payment_date',
-                            ''
-                        )}
-
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+        st.session_state.chat_history.append(
+            ("assistant", answer)
+        )

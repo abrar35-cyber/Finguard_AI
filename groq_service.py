@@ -12,7 +12,6 @@ def _get_api_key():
     try:
         key = st.secrets.get("GROQ_API_KEY")
     except Exception:
-        # No secrets.toml present (local run without secrets)
         key = None
     return key or os.getenv("GROQ_API_KEY")
 
@@ -22,16 +21,13 @@ def get_groq_client():
 
     if not api_key:
         raise ValueError(
-            "GROQ_API_KEY is not configured. Add it to .streamlit/secrets.toml "
+            "GROQ_API_KEY is not configured. Add it in the Streamlit app Secrets "
             "or set it as an environment variable."
         )
 
     return Groq(api_key=api_key, timeout=30.0)
 
 
-# ---------------------------------------------------------
-# NEW: chat helper used by the FinGuard Copilot tab in app.py
-# ---------------------------------------------------------
 def ask_groq(prompt):
     """Send a free-text prompt to Groq and return the answer as a string."""
     try:

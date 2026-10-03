@@ -62,6 +62,8 @@ def init_db():
     # Upgrade older databases so each bill and payment belongs to a user
     _add_column(cursor, "bills", "user_email", "TEXT")
     _add_column(cursor, "payments", "user_email", "TEXT")
+    _add_column(cursor, "users", "avatar_color", "TEXT")
+    _add_column(cursor, "users", "language", "TEXT")
 
     connection.commit()
     connection.close()
@@ -94,13 +96,68 @@ def get_user(email):
     email = (email or "").strip().lower()
     connection = get_connection()
     row = connection.execute(
-        "SELECT email, name, wallet_provider, wallet_number FROM users WHERE email = ?",
+        """
+        SELECT email, name, wallet_provider, wallet_number, avatar_color, language
+        FROM users WHERE email = ?
+        """,
         (email,),
     ).fetchone()
     connection.close()
     if not row:
         return None
-    return {"email": row[0], "name": row[1], "wallet_provider": row[2], "wallet_number": row[3]}
+    return {
+        "email": row[0],
+        "name": row[1],
+        "wallet_provider": row[2],
+        "wallet_number": row[3],
+        "avatar_color": row[4] or "#38bdf8",
+        "language": row[5] or "English",
+    }
+
+
+def update_user(email, name=None, wallet_provider=None, wallet_number=None, avatar_color=None, language=None):
+    """Update only the fields that are provided."""
+    email = (email or "").strip().lower()
+    fields = {
+        "name": name,
+        "wallet_provider": wallet_provider,
+        "wallet_number": wallet_number,
+        "avatar_color": avatar_color,
+        "language": language,
+    }
+    changes = {k: v for k, v in fields.items() if v is not None}
+    if not changes:
+        return get_user(email)
+
+    sets = ", ".join(f"{k} = ?" for k in changes)
+    connection = get_connection()
+    connection.execute(f"UPDATE users SET {sets} WHERE email = ?", (*changes.values(), email))
+    connection.commit()
+    connection.close()
+    return get_user(email)
+
+
+def export_user_data(email):
+    """Everything we store about a user, for the 'Download my data' button."""
+    email = (email or "").strip().lower()
+    bill_cols = ["id", "bill_type", "provider", "consumer_number", "amount", "due_date", "status", "created_at"]
+    pay_cols = ["id", "provider", "amount", "payment_method", "status", "paid_at"]
+    return {
+        "profile": get_user(email),
+        "bills": [dict(zip(bill_cols, r)) for r in get_bills(email)],
+        "payments": [dict(zip(pay_cols, r)) for r in get_payments(email)],
+    }
+
+
+def delete_user_data(email):
+    """Permanently remove the user, their bills and their payments."""
+    email = (email or "").strip().lower()
+    connection = get_connection()
+    connection.execute("DELETE FROM payments WHERE user_email = ?", (email,))
+    connection.execute("DELETE FROM bills WHERE user_email = ?", (email,))
+    connection.execute("DELETE FROM users WHERE email = ?", (email,))
+    connection.commit()
+    connection.close()
 
 
 # ---------------------------------------------------------

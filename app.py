@@ -41,7 +41,7 @@ except ImportError:
 # PAGE CONFIG
 # =========================================================
 st.set_page_config(
-    page_title="FinGuard AI • Autonomous Financial Operations",
+    page_title="FinGuard AI",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -54,7 +54,7 @@ except Exception:
 
 
 # =========================================================
-# PRO FINTECH CSS (LIGHT SAAS DESIGN SYSTEM)
+# PRO FINTECH CSS
 # =========================================================
 st.markdown(
 """<style>
@@ -73,27 +73,16 @@ section[data-testid="stSidebar"], header[data-testid="stHeader"], #MainMenu, foo
 
 .block-container {
     max-width: 1280px;
-    padding-top: 25px;
-    padding-bottom: 60px;
+    padding-top: 20px;
+    padding-bottom: 50px;
 }
 
-/* TOP NAVBAR */
-.top-navbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    padding: 14px 24px;
-    margin-bottom: 24px;
-    box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04);
-}
-
-.nav-brand {
+/* BRAND HEADER */
+.nav-brand-container {
     display: flex;
     align-items: center;
     gap: 12px;
+    margin-bottom: 12px;
 }
 
 .brand-logo {
@@ -111,43 +100,38 @@ section[data-testid="stSidebar"], header[data-testid="stHeader"], #MainMenu, foo
 }
 
 .brand-text {
-    font-size: 20px;
+    font-size: 24px;
     font-weight: 800;
     letter-spacing: -0.8px;
     color: #0f172a;
 }
 
-.brand-badge {
-    background: #ecfdf5;
-    color: #059669;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 3px 8px;
-    border-radius: 20px;
-    border: 1px solid #a7f3d0;
-}
-
-.nav-status {
-    display: flex;
-    align-items: center;
+/* TOP NAVBAR TABS */
+.stTabs [data-baseweb="tab-list"] {
     gap: 8px;
-    font-size: 12px;
+    background: #ffffff;
+    padding: 6px 12px;
+    border-radius: 14px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 8px -2px rgba(15, 23, 42, 0.05);
+}
+
+.stTabs [data-baseweb="tab"] {
+    border-radius: 8px;
+    padding: 10px 20px;
     font-weight: 600;
-    color: #475569;
-    background: #f1f5f9;
-    padding: 6px 14px;
-    border-radius: 30px;
+    font-size: 13.5px;
+    color: #64748b;
+    border: none !important;
 }
 
-.status-pulse {
-    width: 8px;
-    height: 8px;
-    background: #10b981;
-    border-radius: 50%;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+.stTabs [aria-selected="true"] {
+    background: #ecfdf5 !important;
+    color: #047857 !important;
 }
 
-/* PRO METRIC CARDS */
+/* METRIC CARDS */
 .metric-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -160,13 +144,7 @@ section[data-testid="stSidebar"], header[data-testid="stHeader"], #MainMenu, foo
     border: 1px solid #e2e8f0;
     border-radius: 16px;
     padding: 20px;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
-}
-
-.pro-card:hover {
-    box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.06);
-    border-color: #cbd5e1;
 }
 
 .card-header-flex {
@@ -177,7 +155,7 @@ section[data-testid="stSidebar"], header[data-testid="stHeader"], #MainMenu, foo
 }
 
 .card-title {
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 700;
     letter-spacing: 0.5px;
     color: #64748b;
@@ -205,33 +183,6 @@ section[data-testid="stSidebar"], header[data-testid="stHeader"], #MainMenu, foo
 .card-sub {
     font-size: 12px;
     color: #94a3b8;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-/* TAB NAVIGATION STYLING */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 8px;
-    background: #ffffff;
-    padding: 6px;
-    border-radius: 12px;
-    border: 1px solid #e2e8f0;
-    margin-bottom: 20px;
-}
-
-.stTabs [data-baseweb="tab"] {
-    border-radius: 8px;
-    padding: 8px 18px;
-    font-weight: 600;
-    font-size: 13px;
-    color: #64748b;
-    border: none !important;
-}
-
-.stTabs [aria-selected="true"] {
-    background: #ecfdf5 !important;
-    color: #047857 !important;
 }
 
 /* CONTAINER ELEVATION */
@@ -243,7 +194,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
 }
 
-/* INPUTS REFINEMENT */
+/* INPUTS */
 .stTextInput input, .stNumberInput input {
     background-color: #f8fafc !important;
     color: #0f172a !important;
@@ -275,10 +226,6 @@ button[kind="primary"] {
     box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25) !important;
 }
 
-button[kind="primary"]:hover {
-    box-shadow: 0 6px 18px rgba(16, 185, 129, 0.35) !important;
-}
-
 .stButton > button {
     border-radius: 10px !important;
     border: 1px solid #e2e8f0 !important;
@@ -301,30 +248,30 @@ button[kind="primary"]:hover {
 
 
 # =========================================================
-# TOP NAVIGATION BAR
+# BRAND LOGO (CLEAN HEADER - BADGES REMOVED)
 # =========================================================
 st.markdown(
-"""<div class="top-navbar">
-    <div class="nav-brand">
-        <div class="brand-logo">⚡</div>
-        <div>
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span class="brand-text">FinGuard AI</span>
-                <span class="brand-badge">SaaS v2.4</span>
-            </div>
-        </div>
-    </div>
-    <div class="nav-status">
-        <span class="status-pulse"></span>
-        <span>Groq LLaMA-3.3 • Active</span>
-    </div>
+"""<div class="nav-brand-container">
+    <div class="brand-logo">⚡</div>
+    <span class="brand-text">FinGuard AI</span>
 </div>""",
     unsafe_allow_html=True,
 )
 
 
 # =========================================================
-# DATA FETCHING & STATS
+# TOP NAVBAR (TABS SHIFTED TO TOP)
+# =========================================================
+tab_overview, tab_scan, tab_bills, tab_chat = st.tabs([
+    "📊 Financial Overview",
+    "📸 Ingest & OCR Scan",
+    "💳 Bills & Settlements",
+    "🤖 FinGuard Copilot"
+])
+
+
+# =========================================================
+# DATA FETCHING
 # =========================================================
 bills = get_bills() if "get_bills" in globals() else []
 payments = get_payments() if "get_payments" in globals() else []
@@ -336,61 +283,50 @@ total_amount = sum(float(b[4] or 0) for b in bills)
 paid_amount = sum(float(p[2] or 0) for p in payments)
 pending_amount = total_amount - paid_amount if (total_amount - paid_amount) > 0 else 0.0
 
-# 4 PRO SAAS STAT CARDS
-st.markdown(
-f"""<div class="metric-grid">
-    <div class="pro-card">
-        <div class="card-header-flex">
-            <span class="card-title">Total Obligation</span>
-            <div class="card-icon" style="background:#f1f5f9; color:#475569;">📑</div>
-        </div>
-        <div class="card-val">PKR {total_amount:,.0f}</div>
-        <div class="card-sub">{total_bills} utility bills tracked</div>
-    </div>
-    <div class="pro-card">
-        <div class="card-header-flex">
-            <span class="card-title">Pending Balances</span>
-            <div class="card-icon" style="background:#fffbeb; color:#d97706;">⏳</div>
-        </div>
-        <div class="card-val" style="color:#d97706;">PKR {pending_amount:,.0f}</div>
-        <div class="card-sub">{pending_bills} bills require clearance</div>
-    </div>
-    <div class="pro-card">
-        <div class="card-header-flex">
-            <span class="card-title">Settled Amount</span>
-            <div class="card-icon" style="background:#ecfdf5; color:#059669;">✅</div>
-        </div>
-        <div class="card-val" style="color:#047857;">PKR {paid_amount:,.0f}</div>
-        <div class="card-sub">{paid_bills} paid transactions</div>
-    </div>
-    <div class="pro-card">
-        <div class="card-header-flex">
-            <span class="card-title">Automation Rate</span>
-            <div class="card-icon" style="background:#eff6ff; color:#2563eb;">⚡</div>
-        </div>
-        <div class="card-val" style="color:#2563eb;">100%</div>
-        <div class="card-sub">Autonomous OCR & Agents</div>
-    </div>
-</div>""",
-    unsafe_allow_html=True,
-)
-
-
-# =========================================================
-# PRO TAB NAVIGATION
-# =========================================================
-tab_overview, tab_scan, tab_bills, tab_chat = st.tabs([
-    "📊 Financial Overview",
-    "📸 Ingest & OCR Scan",
-    "💳 Bills & Settlements",
-    "🤖 FinGuard Copilot"
-])
-
 
 # ---------------------------------------------------------
 # TAB 1: OVERVIEW & INTELLIGENCE
 # ---------------------------------------------------------
 with tab_overview:
+    # 4 SaaS Metrics Cards Inside Overview
+    st.markdown(
+    f"""<div class="metric-grid">
+        <div class="pro-card">
+            <div class="card-header-flex">
+                <span class="card-title">Total Obligation</span>
+                <div class="card-icon" style="background:#f1f5f9; color:#475569;">📑</div>
+            </div>
+            <div class="card-val">PKR {total_amount:,.0f}</div>
+            <div class="card-sub">{total_bills} utility bills tracked</div>
+        </div>
+        <div class="pro-card">
+            <div class="card-header-flex">
+                <span class="card-title">Pending Balances</span>
+                <div class="card-icon" style="background:#fffbeb; color:#d97706;">⏳</div>
+            </div>
+            <div class="card-val" style="color:#d97706;">PKR {pending_amount:,.0f}</div>
+            <div class="card-sub">{pending_bills} bills require clearance</div>
+        </div>
+        <div class="pro-card">
+            <div class="card-header-flex">
+                <span class="card-title">Settled Amount</span>
+                <div class="card-icon" style="background:#ecfdf5; color:#059669;">✅</div>
+            </div>
+            <div class="card-val" style="color:#047857;">PKR {paid_amount:,.0f}</div>
+            <div class="card-sub">{paid_bills} paid transactions</div>
+        </div>
+        <div class="pro-card">
+            <div class="card-header-flex">
+                <span class="card-title">Automation Rate</span>
+                <div class="card-icon" style="background:#eff6ff; color:#2563eb;">⚡</div>
+            </div>
+            <div class="card-val" style="color:#2563eb;">100%</div>
+            <div class="card-sub">Autonomous OCR & Agents</div>
+        </div>
+    </div>""",
+        unsafe_allow_html=True,
+    )
+
     col_left, col_right = st.columns([1.8, 1.2])
 
     with col_left:
@@ -421,7 +357,6 @@ f"""<div style="display:flex; justify-content:space-between; align-items:center;
         with st.container(border=True):
             st.markdown('<div style="font-weight:700; font-size:16px; margin-bottom:14px;">Automated Agents</div>', unsafe_allow_html=True)
             
-            # Inbox Agent Trigger
             if find_bills_from_inbox:
                 st.markdown(
                     """<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px; margin-bottom:14px;">
@@ -436,7 +371,6 @@ f"""<div style="display:flex; justify-content:space-between; align-items:center;
                         st.success("Inbox parsing complete!")
                         st.rerun()
 
-            # Payment Log Summary
             st.markdown('<div style="font-weight:700; font-size:14px; margin-top:18px; margin-bottom:10px;">Recent Settlements</div>', unsafe_allow_html=True)
             if payments:
                 for p in payments[:3]:
@@ -544,7 +478,6 @@ with tab_bills:
         else:
             st.info("No active invoices registered.")
 
-    # Payment Gateway Trigger
     if st.session_state.get("show_payment", False):
         with st.container(border=True):
             st.markdown('<div style="font-weight:700; font-size:16px;">Instant Payment Gateway</div>', unsafe_allow_html=True)

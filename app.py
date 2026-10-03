@@ -25,7 +25,6 @@ try:
 except ImportError:
     extract_text_from_image = None
 
-# Optional Agent Imports
 try:
     from bill_finder_agent import find_bills_from_inbox
 except ImportError:
@@ -47,7 +46,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Initialize Database
 try:
     init_db()
 except Exception:
@@ -55,7 +53,7 @@ except Exception:
 
 
 # =========================================================
-# CSS STYLING (GREEN & WHITE LIGHT THEME)
+# CSS STYLING (FIXED LIGHT GREEN & WHITE THEME)
 # =========================================================
 st.markdown(
 """<style>
@@ -65,23 +63,14 @@ html, body, [class*="css"] {
     font-family: 'Inter', sans-serif;
 }
 
+/* Background */
 .stApp {
-    background:
-        radial-gradient(circle at 10% 0%, rgba(16, 185, 129, 0.08), transparent 28%),
-        radial-gradient(circle at 90% 10%, rgba(16, 185, 129, 0.05), transparent 28%),
-        #f8fafc;
+    background: #f8fafc;
     color: #0f172a;
 }
 
-section[data-testid="stSidebar"] {
+section[data-testid="stSidebar"], header[data-testid="stHeader"], #MainMenu, footer {
     display: none;
-}
-
-header[data-testid="stHeader"] {
-    background: transparent;
-}
-
-#MainMenu, footer {
     visibility: hidden;
 }
 
@@ -91,9 +80,10 @@ header[data-testid="stHeader"] {
     padding-bottom: 60px;
 }
 
+/* Headings */
 .hero-small {
     color: #059669;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 800;
     letter-spacing: 2px;
     margin-bottom: 6px;
@@ -108,24 +98,25 @@ header[data-testid="stHeader"] {
 }
 
 .main-subtitle {
-    color: #64748b;
+    color: #475569;
     font-size: 14px;
     margin-bottom: 25px;
 }
 
+/* Metric Cards */
 .metric-card {
     background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
     padding: 18px;
-    min-height: 115px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03);
+    min-height: 110px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .metric-label {
     color: #64748b;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
 }
 
@@ -133,7 +124,7 @@ header[data-testid="stHeader"] {
     color: #047857;
     font-size: 24px;
     font-weight: 800;
-    margin-top: 8px;
+    margin-top: 6px;
 }
 
 .metric-small {
@@ -142,6 +133,7 @@ header[data-testid="stHeader"] {
     margin-top: 4px;
 }
 
+/* Section Containers */
 .section-title {
     color: #0f172a;
     font-size: 18px;
@@ -151,7 +143,7 @@ header[data-testid="stHeader"] {
 
 .section-subtitle {
     color: #64748b;
-    font-size: 12px;
+    font-size: 13px;
     margin-bottom: 16px;
 }
 
@@ -159,34 +151,82 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
     background: #ffffff;
     border: 1px solid #e2e8f0 !important;
     border-radius: 14px;
-    padding: 18px;
+    padding: 20px;
     margin-top: 15px;
     margin-bottom: 15px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 
-.stTextInput input,
-.stNumberInput input,
-.stTextArea textarea,
-.stSelectbox div[data-baseweb="select"] {
-    background: #ffffff !important;
+/* ALL INPUT LABELS VISIBILITY FIX */
+label[data-testid="stWidgetLabel"] p {
+    color: #1e293b !important;
+    font-weight: 600 !important;
+    font-size: 13px !important;
+}
+
+/* TEXT & NUMBER INPUT FIX */
+.stTextInput input, .stNumberInput input {
+    background-color: #ffffff !important;
     color: #0f172a !important;
     border: 1px solid #cbd5e1 !important;
-    border-radius: 9px !important;
+    border-radius: 8px !important;
 }
 
+.stTextInput input:focus, .stNumberInput input:focus {
+    border-color: #10b981 !important;
+    box-shadow: 0 0 0 1px #10b981 !important;
+}
+
+/* SELECTBOX / DROPDOWN FIX (REMOVES BLACK BOX) */
+div[data-baseweb="select"] {
+    background-color: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+}
+
+div[data-baseweb="select"] * {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+}
+
+/* FILE UPLOADER FIX (REMOVES BLACK BOX) */
 [data-testid="stFileUploader"] {
-    background: #f8fafc;
-    border: 1px dashed #cbd5e1;
-    border-radius: 12px;
-    padding: 10px;
+    background-color: #ffffff !important;
+    border: 1px dashed #cbd5e1 !important;
+    border-radius: 10px !important;
+    padding: 12px;
 }
 
+[data-testid="stFileUploaderDropzone"] {
+    background-color: #f8fafc !important;
+}
+
+[data-testid="stFileUploaderDropzone"] * {
+    color: #334155 !important;
+}
+
+/* CHAT INPUT FIX (REMOVES BLACK BOX) */
+[data-testid="stChatInput"] {
+    background-color: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 10px !important;
+}
+
+[data-testid="stChatInput"] textarea {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+}
+
+[data-testid="stChatInput"] button {
+    color: #10b981 !important;
+}
+
+/* BUTTONS */
 .stButton > button {
-    border-radius: 9px;
+    border-radius: 8px;
     border: 1px solid #cbd5e1;
     background: #ffffff;
-    color: #0f172a;
+    color: #1e293b;
     font-weight: 600;
 }
 
@@ -206,16 +246,18 @@ button[kind="primary"]:hover {
     border-color: #059669 !important;
 }
 
-[data-testid="stChatMessage"] {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-}
-
+/* EXPANDER & CHAT MESSAGES */
 [data-testid="stExpander"] {
     background: #ffffff;
     border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+[data-testid="stChatMessage"] {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 10px;
+    color: #0f172a;
 }
 </style>""",
     unsafe_allow_html=True,
@@ -282,11 +324,11 @@ with st.container(border=True):
 f"""<div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #f1f5f9;">
     <div>
         <div style="color:#0f172a; font-weight:600;">{prov or b_type or "Utility Bill"}</div>
-        <div style="color:#64748b; font-size:11px; margin-top:3px;">Account: {cons or "N/A"}</div>
+        <div style="color:#64748b; font-size:12px; margin-top:3px;">Account: {cons or "N/A"}</div>
     </div>
     <div style="text-align:right;">
         <div style="color:#047857; font-weight:700;">PKR {float(amt or 0):,.0f}</div>
-        <div style="color:#10b981; font-size:11px; font-weight:600;">{status}</div>
+        <div style="color:#10b981; font-size:12px; font-weight:600;">{status}</div>
     </div>
 </div>""",
                 unsafe_allow_html=True,
@@ -326,7 +368,7 @@ with st.container(border=True):
     with col_a:
         provider = st.text_input("Provider", value=st.session_state.get("scan_provider", ""), placeholder="KE, LESCO, SSGC, PTCL")
         bill_type = st.selectbox("Bill Type", ["Electricity", "Gas", "Internet", "Water", "Mobile", "Other"])
-        consumer_number = st.text_input("Consumer #", value=st.session_state.get("scan_consumer", ""))
+        consumer_number = st.text_input("Consumer Number", value=st.session_state.get("scan_consumer", ""))
     
     with col_b:
         amount = st.number_input("Amount (PKR)", min_value=0.0, value=float(st.session_state.get("scan_amount", 0.0)), step=100.0)

@@ -5,12 +5,9 @@ from groq import Groq
 
 def get_groq_client():
 
-    api_key = st.secrets.get(
-        "GROQ_API_KEY"
-    )
+    api_key = st.secrets.get("GROQ_API_KEY")
 
     if not api_key:
-
         raise ValueError(
             "GROQ_API_KEY is not configured."
         )
@@ -29,9 +26,7 @@ You are a bill information extraction assistant.
 
 Extract information from the bill text below.
 
-Return ONLY valid JSON.
-
-Required fields:
+Return ONLY valid JSON with exactly these fields:
 
 provider
 bill_type
@@ -39,7 +34,11 @@ amount
 due_date
 account_number
 
-If a value is unavailable, use null.
+Rules:
+- If a value is unavailable, use null.
+- Keep amount as a number when possible.
+- Use YYYY-MM-DD for due_date when the date is clear.
+- Do not invent information.
 
 Bill text:
 
@@ -48,14 +47,14 @@ Bill text:
 
     response = client.chat.completions.create(
 
-        model="llama-3.1-8b-instant",
+        model="openai/gpt-oss-120b",
 
         messages=[
             {
                 "role": "system",
                 "content": (
-                    "You extract structured information "
-                    "from bills and return valid JSON only."
+                    "You extract structured information from bills. "
+                    "Return valid JSON only."
                 )
             },
             {
@@ -64,7 +63,11 @@ Bill text:
             }
         ],
 
-        temperature=0
+        temperature=0,
+
+        response_format={
+            "type": "json_object"
+        }
     )
 
     content = response.choices[0].message.content
@@ -75,7 +78,6 @@ Bill text:
 
     except json.JSONDecodeError:
 
-        # Handle accidental markdown JSON
         content = content.replace(
             "```json",
             ""

@@ -600,14 +600,3 @@ with tab_chat:
                     st.markdown(answer)
 
             st.session_state.chat_history.append(("assistant", answer))
-
-
-# =========================================================
-# FOOTER
-# =========================================================
-st.markdown(
-"""<div style="text-align:center; color:#94a3b8; font-size:12px; margin-top:40px; padding-top:20px; border-top:1px solid #e2e8f0;">
-    FinGuard AI • Autonomous Financial Engine • Powered by Groq LLaMA-3.3
-</div>""",
-    unsafe_allow_html=True,
-)

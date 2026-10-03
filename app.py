@@ -1,24 +1,45 @@
 import os
-import re
-import sqlite3
-from datetime import datetime
-
 import streamlit as st
-from groq import Groq
+
+# =========================================================
+# IMPORT INTERNAL MODULES & AGENTS
+# =========================================================
+try:
+    from database import init_db, get_bills, get_payments, add_bill, add_payment
+except ImportError:
+    st.error("Missing database.py module.")
 
 try:
-    import pytesseract
-    from PIL import Image
-
-    OCR_AVAILABLE = True
+    from groq_service import ask_groq
 except ImportError:
-    OCR_AVAILABLE = False
+    def ask_groq(prompt):
+        return "groq_service.py not found or configured."
+
+try:
+    from ocr_service import (
+        extract_text_from_image,
+        extract_amount,
+        detect_provider,
+        extract_consumer_number,
+    )
+except ImportError:
+    extract_text_from_image = None
+
+# Optional Agent Imports
+try:
+    from bill_finder_agent import find_bills_from_inbox
+except ImportError:
+    find_bills_from_inbox = None
+
+try:
+    from reminder_agent import get_reminder_status
+except ImportError:
+    get_reminder_status = None
 
 
 # =========================================================
 # PAGE CONFIG
 # =========================================================
-
 st.set_page_config(
     page_title="Finguard AI",
     page_icon="💳",
@@ -26,38 +47,16 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-
-# =========================================================
-# CONFIG
-# =========================================================
-
-APP_NAME = "FINGUARD AI"
-DB_FILE = "finguard.db"
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
-
+# Initialize Database
 try:
-    GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
-    GROQ_MODEL = st.secrets.get("GROQ_MODEL", DEFAULT_MODEL)
+    init_db()
 except Exception:
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-    GROQ_MODEL = os.getenv("GROQ_MODEL", DEFAULT_MODEL)
-
-if not GROQ_API_KEY:
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-
-client = None
-
-if GROQ_API_KEY:
-    try:
-        client = Groq(api_key=GROQ_API_KEY)
-    except Exception:
-        client = None
+    pass
 
 
 # =========================================================
-# CSS
+# CSS STYLING
 # =========================================================
-
 st.markdown(
 """<style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -88,7 +87,7 @@ header[data-testid="stHeader"] {
 
 .block-container {
     max-width: 1250px;
-    padding-top: 45px;
+    padding-top: 40px;
     padding-bottom: 60px;
 }
 
@@ -97,7 +96,7 @@ header[data-testid="stHeader"] {
     font-size: 11px;
     font-weight: 800;
     letter-spacing: 2px;
-    margin-bottom: 7px;
+    margin-bottom: 6px;
 }
 
 .main-title {
@@ -118,8 +117,8 @@ header[data-testid="stHeader"] {
     background: linear-gradient(145deg, rgba(17,24,39,0.98), rgba(10,15,23,0.98));
     border: 1px solid #243044;
     border-radius: 16px;
-    padding: 20px 22px;
-    margin-bottom: 20px;
+    padding: 18px 22px;
+    margin-bottom: 25px;
 }
 
 .ai-engine-label {
@@ -131,15 +130,15 @@ header[data-testid="stHeader"] {
 
 .ai-engine-model {
     color: white;
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 700;
-    margin-top: 5px;
+    margin-top: 4px;
 }
 
 .ai-engine-provider {
     color: #9ca3af;
     font-size: 11px;
-    margin-top: 3px;
+    margin-top: 2px;
 }
 
 .ai-online {
@@ -148,23 +147,13 @@ header[data-testid="stHeader"] {
     font-weight: 700;
 }
 
-.ai-offline {
-    color: #ef4444;
-    font-size: 11px;
-    font-weight: 700;
-}
-
 .status-dot {
     display: inline-block;
-    width: 7px;
-    height: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: #10b981;
-    margin-right: 5px;
-}
-
-.status-dot.offline {
-    background: #ef4444;
+    margin-right: 6px;
 }
 
 .metric-card {
@@ -183,7 +172,7 @@ header[data-testid="stHeader"] {
 
 .metric-value {
     color: white;
-    font-size: 25px;
+    font-size: 24px;
     font-weight: 800;
     margin-top: 8px;
 }
@@ -198,7 +187,7 @@ header[data-testid="stHeader"] {
     color: white;
     font-size: 18px;
     font-weight: 700;
-    margin-bottom: 2px;
+    margin-bottom: 3px;
 }
 
 .section-subtitle {
@@ -210,8 +199,8 @@ header[data-testid="stHeader"] {
 div[data-testid="stVerticalBlockBorderWrapper"] {
     background: #0d131c;
     border: 1px solid #202938 !important;
-    border-radius: 15px;
-    padding: 15px;
+    border-radius: 14px;
+    padding: 18px;
     margin-top: 15px;
     margin-bottom: 15px;
 }
@@ -263,321 +252,34 @@ button[kind="primary"] {
     border: 1px solid #202938;
     border-radius: 10px;
 }
-
-hr {
-    border-color: #202938;
-}
 </style>""",
     unsafe_allow_html=True,
 )
 
 
 # =========================================================
-# DATABASE
+# HEADER
 # =========================================================
-
-def get_connection():
-    return sqlite3.connect(DB_FILE)
-
-
-def init_db():
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS bills (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bill_type TEXT,
-            provider TEXT,
-            consumer_number TEXT,
-            amount REAL,
-            due_date TEXT,
-            status TEXT DEFAULT 'Pending',
-            extracted_text TEXT,
-            created_at TEXT
-        )
-        """
-    )
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS payments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            bill_id INTEGER,
-            amount REAL,
-            payment_method TEXT,
-            status TEXT,
-            paid_at TEXT
-        )
-        """
-    )
-
-    conn.commit()
-    conn.close()
-
-
-init_db()
-
-
-# =========================================================
-# DATABASE HELPERS
-# =========================================================
-
-def get_bills():
-    conn = get_connection()
-    rows = conn.execute(
-        """
-        SELECT
-            id,
-            bill_type,
-            provider,
-            consumer_number,
-            amount,
-            due_date,
-            status,
-            created_at
-        FROM bills
-        ORDER BY id DESC
-        """
-    ).fetchall()
-    conn.close()
-    return rows
-
-
-def get_payments():
-    conn = get_connection()
-    rows = conn.execute(
-        """
-        SELECT
-            payments.id,
-            bills.provider,
-            payments.amount,
-            payments.payment_method,
-            payments.status,
-            payments.paid_at
-        FROM payments
-        LEFT JOIN bills
-        ON payments.bill_id = bills.id
-        ORDER BY payments.id DESC
-        """
-    ).fetchall()
-    conn.close()
-    return rows
-
-
-def add_bill(
-    bill_type,
-    provider,
-    consumer_number,
-    amount,
-    due_date,
-    extracted_text,
-):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT INTO bills
-        (
-            bill_type,
-            provider,
-            consumer_number,
-            amount,
-            due_date,
-            status,
-            extracted_text,
-            created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            bill_type,
-            provider,
-            consumer_number,
-            amount,
-            due_date,
-            "Pending",
-            extracted_text,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        ),
-    )
-    bill_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return bill_id
-
-
-def add_payment(bill_id, amount, method):
-    conn = get_connection()
-    conn.execute(
-        """
-        INSERT INTO payments
-        (
-            bill_id,
-            amount,
-            payment_method,
-            status,
-            paid_at
-        )
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (
-            bill_id,
-            amount,
-            method,
-            "Successful",
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        ),
-    )
-    conn.execute(
-        """
-        UPDATE bills
-        SET status = 'Paid'
-        WHERE id = ?
-        """,
-        (bill_id,),
-    )
-    conn.commit()
-    conn.close()
-
-
-# =========================================================
-# OCR
-# =========================================================
-
-def extract_text_from_image(uploaded_file):
-    if not OCR_AVAILABLE:
-        return ""
-    try:
-        image = Image.open(uploaded_file)
-        text = pytesseract.image_to_string(image)
-        return text.strip()
-    except Exception:
-        return ""
-
-
-# =========================================================
-# BILL EXTRACTION
-# =========================================================
-
-def extract_amount(text):
-    if not text:
-        return 0.0
-
-    patterns = [
-        r"(?:total|amount|payable|bill amount|net payable)[^\d]{0,20}([\d,]+(?:\.\d{1,2})?)",
-        r"Rs\.?\s*([\d,]+(?:\.\d{1,2})?)",
-        r"PKR\s*([\d,]+(?:\.\d{1,2})?)",
-    ]
-
-    for pattern in patterns:
-        matches = re.findall(pattern, text, flags=re.IGNORECASE)
-        if matches:
-            try:
-                value = matches[-1].replace(",", "")
-                return float(value)
-            except Exception:
-                pass
-
-    return 0.0
-
-
-def extract_consumer_number(text):
-    if not text:
-        return ""
-
-    patterns = [
-        r"(?:consumer|customer|reference|account)\s*(?:no|number|#)?\s*[:\-]?\s*([A-Za-z0-9\-]{6,30})",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE)
-        if match:
-            return match.group(1)
-
-    return ""
-
-
-def detect_provider(text):
-    text_lower = text.lower()
-    providers = {
-        "KE": ["k-electric", "k electric", "k-electricity"],
-        "LESCO": ["lesco"],
-        "FESCO": ["fesco"],
-        "IESCO": ["iesco"],
-        "MEPCO": ["mepco"],
-        "PESCO": ["pesco"],
-        "SNGPL": ["sngpl"],
-        "SSGC": ["ssgc"],
-        "PTCL": ["ptcl"],
-    }
-
-    for provider_name, keywords in providers.items():
-        for keyword in keywords:
-            if keyword in text_lower:
-                return provider_name
-
-    return "Unknown"
-
-
-# =========================================================
-# GROQ
-# =========================================================
-
-def ask_groq(prompt_text):
-    if client is None:
-        return "AI service is not connected. Please add GROQ_API_KEY to Streamlit Secrets."
-
-    try:
-        response = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are Finguard AI, an AI assistant for bill management and payment assistance. "
-                        "Give concise, practical and clear answers. Do not claim that a real payment was completed "
-                        "unless the application confirms it."
-                    ),
-                },
-                {"role": "user", "content": prompt_text},
-            ],
-            temperature=0.2,
-            max_tokens=700,
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"AI request failed: {str(e)}"
-
-
-# =========================================================
-# MAIN HEADER
-# =========================================================
-
 st.markdown('<div class="hero-small">FINANCIAL CONTROL CENTER</div>', unsafe_allow_html=True)
 st.markdown('<div class="main-title">FINGUARD AI</div>', unsafe_allow_html=True)
-st.markdown('<div class="main-subtitle">Intelligent bill management, payment tracking and AI assistance.</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-subtitle">Intelligent multi-agent bill management, scanning & payment tracking.</div>', unsafe_allow_html=True)
 
 
 # =========================================================
-# AI ENGINE
+# AI STATUS BAR
 # =========================================================
-
-if client:
-    status_html = '<span class="status-dot"></span><span class="ai-online">ONLINE</span>'
-else:
-    status_html = '<span class="status-dot offline"></span><span class="ai-offline">OFFLINE</span>'
-
 st.markdown(
-f"""<div class="ai-engine-card">
+"""<div class="ai-engine-card">
 <div style="display:flex; justify-content:space-between; align-items:center;">
     <div>
-        <div class="ai-engine-label">AI ENGINE</div>
-        <div class="ai-engine-model">{GROQ_MODEL}</div>
-        <div class="ai-engine-provider">Powered by Groq</div>
+        <div class="ai-engine-label">AI MULTI-AGENT ENGINE</div>
+        <div class="ai-engine-model">LLaMA 3.3 / Groq Cloud</div>
+        <div class="ai-engine-provider">Autonomous Financial Agents Connected</div>
     </div>
-    <div>{status_html}</div>
+    <div>
+        <span class="status-dot"></span>
+        <span class="ai-online">ONLINE</span>
+    </div>
 </div>
 </div>""",
     unsafe_allow_html=True,
@@ -585,361 +287,227 @@ f"""<div class="ai-engine-card">
 
 
 # =========================================================
-# STATISTICS
+# STATS METRICS
 # =========================================================
-
-bills = get_bills()
-payments = get_payments()
+bills = get_bills() if "get_bills" in globals() else []
+payments = get_payments() if "get_payments" in globals() else []
 
 total_bills = len(bills)
-paid_bills = len([bill for bill in bills if bill[6] == "Paid"])
-pending_bills = len([bill for bill in bills if bill[6] != "Paid"])
-total_amount = sum(float(bill[4] or 0) for bill in bills)
-paid_amount = sum(float(payment[2] or 0) for payment in payments)
+paid_bills = len([b for b in bills if b[6] == "Paid"])
+pending_bills = len([b for b in bills if b[6] != "Paid"])
+total_amount = sum(float(b[4] or 0) for b in bills)
+paid_amount = sum(float(p[2] or 0) for p in payments)
 
 c1, c2, c3, c4 = st.columns(4)
-
 with c1:
-    st.markdown(
-f"""<div class="metric-card">
-<div class="metric-label">TOTAL BILLS</div>
-<div class="metric-value">{total_bills}</div>
-<div class="metric-small">Tracked bills</div>
-</div>""",
-        unsafe_allow_html=True,
-    )
-
+    st.markdown(f'<div class="metric-card"><div class="metric-label">TOTAL BILLS</div><div class="metric-value">{total_bills}</div><div class="metric-small">Tracked bills</div></div>', unsafe_allow_html=True)
 with c2:
-    st.markdown(
-f"""<div class="metric-card">
-<div class="metric-label">PENDING</div>
-<div class="metric-value">{pending_bills}</div>
-<div class="metric-small">Require attention</div>
-</div>""",
-        unsafe_allow_html=True,
-    )
-
+    st.markdown(f'<div class="metric-card"><div class="metric-label">PENDING</div><div class="metric-value">{pending_bills}</div><div class="metric-small">Require attention</div></div>', unsafe_allow_html=True)
 with c3:
-    st.markdown(
-f"""<div class="metric-card">
-<div class="metric-label">TOTAL VALUE</div>
-<div class="metric-value">PKR {total_amount:,.0f}</div>
-<div class="metric-small">Bills tracked</div>
-</div>""",
-        unsafe_allow_html=True,
-    )
-
+    st.markdown(f'<div class="metric-card"><div class="metric-label">TOTAL VALUE</div><div class="metric-value">PKR {total_amount:,.0f}</div><div class="metric-small">All bills tracked</div></div>', unsafe_allow_html=True)
 with c4:
-    st.markdown(
-f"""<div class="metric-card">
-<div class="metric-label">PAID</div>
-<div class="metric-value">PKR {paid_amount:,.0f}</div>
-<div class="metric-small">{paid_bills} completed payments</div>
-</div>""",
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'<div class="metric-card"><div class="metric-label">PAID</div><div class="metric-value">PKR {paid_amount:,.0f}</div><div class="metric-small">{paid_bills} cleared transactions</div></div>', unsafe_allow_html=True)
+
+
+# =========================================================
+# AGENT: EMAIL BILL FINDER (IF AVAILABLE)
+# =========================================================
+if find_bills_from_inbox:
+    with st.container(border=True):
+        st.markdown('<div class="section-title">📬 Bill Finder Agent</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-subtitle">Autonomous agent that scans email invoices from demo_emails.json</div>', unsafe_allow_html=True)
+        
+        if st.button("Scan Inbox for Invoices", key="scan_inbox_btn"):
+            with st.spinner("Agent scanning mail data..."):
+                found = find_bills_from_inbox()
+                st.success(f"Agent finished scanning: {found if found else 'Completed'}")
+                st.rerun()
 
 
 # =========================================================
 # RECENT BILLS
 # =========================================================
-
 with st.container(border=True):
     st.markdown('<div class="section-title">Recent Bills</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Your latest bill activity</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Your latest bill tracking history</div>', unsafe_allow_html=True)
 
     if bills:
         for bill in bills[:5]:
-            (
-                bill_id,
-                bill_type,
-                provider,
-                consumer,
-                amount,
-                due_date,
-                status,
-                created,
-            ) = bill
-
+            b_id, b_type, prov, cons, amt, due, status, created = bill
             st.markdown(
-f"""<div style="display:flex; justify-content:space-between; align-items:center; padding:13px 0; border-bottom:1px solid #1c2532;">
+f"""<div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #1c2532;">
     <div>
-        <div style="color:white; font-weight:600;">{provider or bill_type or "Bill"}</div>
-        <div style="color:#667085; font-size:11px; margin-top:4px;">{consumer or "No consumer number"}</div>
+        <div style="color:white; font-weight:600;">{prov or b_type or "Utility Bill"}</div>
+        <div style="color:#667085; font-size:11px; margin-top:3px;">Account: {cons or "N/A"}</div>
     </div>
     <div style="text-align:right;">
-        <div style="color:white; font-weight:700;">PKR {float(amount or 0):,.0f}</div>
-        <div style="color:#8b95a7; font-size:11px;">{status}</div>
-    </div>
-</div>""",
-                unsafe_allow_html=True,
-            )
-    else:
-        st.info("No bills have been added yet. Use the Scan Bill section below.")
-
-
-# =========================================================
-# SCAN BILL
-# =========================================================
-
-with st.container(border=True):
-    st.markdown('<div class="section-title">Scan Bill</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Upload a bill image and extract useful information automatically.</div>', unsafe_allow_html=True)
-
-    uploaded_file = st.file_uploader(
-        "Upload bill image",
-        type=["png", "jpg", "jpeg"],
-        key="bill_upload",
-    )
-
-    if uploaded_file:
-        st.image(uploaded_file, caption="Uploaded bill", use_container_width=True)
-
-        if st.button("Scan & Extract Bill", type="primary", key="scan_bill_button"):
-            with st.spinner("Analyzing bill..."):
-                extracted_text = extract_text_from_image(uploaded_file)
-
-                if extracted_text:
-                    st.session_state["scan_text"] = extracted_text
-                    st.session_state["scan_provider"] = detect_provider(extracted_text)
-                    st.session_state["scan_amount"] = extract_amount(extracted_text)
-                    st.session_state["scan_consumer"] = extract_consumer_number(extracted_text)
-                    st.success("Bill information extracted successfully.")
-                else:
-                    st.warning("OCR could not extract readable text. Please enter the bill information manually.")
-
-    provider = st.text_input(
-        "Provider",
-        value=st.session_state.get("scan_provider", ""),
-        placeholder="e.g. KE, LESCO, SSGC",
-    )
-
-    bill_type = st.selectbox(
-        "Bill Type",
-        ["Electricity", "Gas", "Internet", "Mobile", "Water", "Other"],
-    )
-
-    consumer_number = st.text_input(
-        "Consumer / Account Number",
-        value=st.session_state.get("scan_consumer", ""),
-    )
-
-    amount = st.number_input(
-        "Amount",
-        min_value=0.0,
-        value=float(st.session_state.get("scan_amount", 0.0)),
-        step=100.0,
-    )
-
-    due_date = st.text_input(
-        "Due Date",
-        placeholder="e.g. 15 October 2026",
-    )
-
-    if st.button("Save Bill", type="primary", key="save_bill_button"):
-        bill_id = add_bill(
-            bill_type=bill_type,
-            provider=provider,
-            consumer_number=consumer_number,
-            amount=amount,
-            due_date=due_date,
-            extracted_text=st.session_state.get("scan_text", ""),
-        )
-        st.success(f"Bill #{bill_id} saved successfully.")
-        st.session_state["scan_text"] = ""
-        st.session_state["scan_provider"] = ""
-        st.session_state["scan_amount"] = 0.0
-        st.session_state["scan_consumer"] = ""
-
-
-# =========================================================
-# MY BILLS
-# =========================================================
-
-with st.container(border=True):
-    st.markdown('<div class="section-title">My Bills</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">View your saved bills and manage payments.</div>', unsafe_allow_html=True)
-
-    if bills:
-        for bill in bills:
-            (
-                bill_id,
-                bill_type,
-                provider,
-                consumer,
-                amount,
-                due_date,
-                status,
-                created,
-            ) = bill
-
-            with st.expander(f"{provider or bill_type} • PKR {float(amount or 0):,.0f}"):
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    st.write(f"**Bill Type:** {bill_type}")
-                    st.write(f"**Provider:** {provider}")
-                    st.write(f"**Consumer Number:** {consumer}")
-
-                with col2:
-                    st.write(f"**Amount:** PKR {float(amount or 0):,.2f}")
-                    st.write(f"**Due Date:** {due_date or 'Not provided'}")
-                    st.write(f"**Status:** {status}")
-
-                if status != "Paid":
-                    if st.button(f"Pay PKR {float(amount or 0):,.0f}", key=f"pay_{bill_id}"):
-                        st.session_state["selected_bill"] = bill_id
-                        st.session_state["selected_amount"] = float(amount or 0)
-                        st.session_state["show_payment"] = True
-                        st.rerun()
-    else:
-        st.info("No bills available.")
-
-
-# =========================================================
-# PAYMENT CENTER
-# =========================================================
-
-with st.container(border=True):
-    st.markdown('<div class="section-title">Payment Center</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Review and record bill payments.</div>', unsafe_allow_html=True)
-
-    if st.session_state.get("show_payment", False):
-        selected_bill = st.session_state.get("selected_bill")
-        selected_amount = st.session_state.get("selected_amount", 0.0)
-
-        st.write(f"### Payment Amount: PKR {selected_amount:,.2f}")
-
-        payment_method = st.selectbox(
-            "Payment Method",
-            ["JazzCash", "EasyPaisa", "Bank Transfer", "Debit / Credit Card"],
-            key="payment_method",
-        )
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if st.button("Confirm Payment", type="primary", key="confirm_payment"):
-                add_payment(
-                    bill_id=selected_bill,
-                    amount=selected_amount,
-                    method=payment_method,
-                )
-                st.session_state["show_payment"] = False
-                st.session_state.pop("selected_bill", None)
-                st.session_state.pop("selected_amount", None)
-                st.success("Payment recorded successfully.")
-                st.rerun()
-
-        with col2:
-            if st.button("Cancel", key="cancel_payment"):
-                st.session_state["show_payment"] = False
-                st.session_state.pop("selected_bill", None)
-                st.session_state.pop("selected_amount", None)
-                st.rerun()
-
-
-# =========================================================
-# PAYMENT HISTORY
-# =========================================================
-
-with st.container(border=True):
-    st.markdown('<div class="section-title">Payment History</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Your previous payment records.</div>', unsafe_allow_html=True)
-
-    payments = get_payments()
-
-    if payments:
-        for payment in payments:
-            (
-                payment_id,
-                provider,
-                amount,
-                method,
-                status,
-                paid_at,
-            ) = payment
-
-            st.markdown(
-f"""<div style="display:flex; justify-content:space-between; padding:13px 0; border-bottom:1px solid #1c2532;">
-    <div>
-        <div style="color:white; font-weight:600;">{provider or "Bill Payment"}</div>
-        <div style="color:#687386; font-size:11px; margin-top:4px;">{method} • {paid_at}</div>
-    </div>
-    <div style="text-align:right;">
-        <div style="color:white; font-weight:700;">PKR {float(amount or 0):,.0f}</div>
+        <div style="color:white; font-weight:700;">PKR {float(amt or 0):,.0f}</div>
         <div style="color:#10b981; font-size:11px;">{status}</div>
     </div>
 </div>""",
                 unsafe_allow_html=True,
             )
     else:
-        st.info("No payments recorded yet.")
+        st.info("No bills recorded yet. Use the OCR Scanner below to add one.")
 
 
 # =========================================================
-# AI ASSISTANT
+# SCAN BILL (OCR SERVICE)
 # =========================================================
+with st.container(border=True):
+    st.markdown('<div class="section-title">Scan Bill (OCR Agent)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Upload bill receipt to extract provider, due date, and amount</div>', unsafe_allow_html=True)
 
+    uploaded_file = st.file_uploader("Upload utility bill", type=["png", "jpg", "jpeg"], key="bill_upload")
+
+    if uploaded_file:
+        st.image(uploaded_file, caption="Receipt Preview", use_container_width=True)
+
+        if st.button("Extract Data from Image", type="primary", key="ocr_btn"):
+            if extract_text_from_image:
+                with st.spinner("Extracting with OCR..."):
+                    extracted_text = extract_text_from_image(uploaded_file)
+                    if extracted_text:
+                        st.session_state["scan_text"] = extracted_text
+                        st.session_state["scan_provider"] = detect_provider(extracted_text) if detect_provider else ""
+                        st.session_state["scan_amount"] = extract_amount(extracted_text) if extract_amount else 0.0
+                        st.session_state["scan_consumer"] = extract_consumer_number(extracted_text) if extract_consumer_number else ""
+                        st.success("Extracted bill parameters successfully.")
+                    else:
+                        st.warning("Could not extract readable text. Enter values manually below.")
+            else:
+                st.warning("OCR Service not installed. Please input manually.")
+
+    # Bill Input Fields
+    col_a, col_b = st.columns(2)
+    with col_a:
+        provider = st.text_input("Provider", value=st.session_state.get("scan_provider", ""), placeholder="KE, LESCO, SSGC, PTCL")
+        bill_type = st.selectbox("Bill Type", ["Electricity", "Gas", "Internet", "Water", "Mobile", "Other"])
+        consumer_number = st.text_input("Consumer #", value=st.session_state.get("scan_consumer", ""))
+    
+    with col_b:
+        amount = st.number_input("Amount (PKR)", min_value=0.0, value=float(st.session_state.get("scan_amount", 0.0)), step=100.0)
+        due_date = st.text_input("Due Date", placeholder="e.g. 15 Oct 2026")
+
+    if st.button("Save Extracted Bill", type="primary", key="save_bill_btn"):
+        if add_bill:
+            b_id = add_bill(
+                bill_type=bill_type,
+                provider=provider,
+                consumer_number=consumer_number,
+                amount=amount,
+                due_date=due_date,
+                extracted_text=st.session_state.get("scan_text", "")
+            )
+            st.success(f"Bill #{b_id} added successfully.")
+            for key in ["scan_text", "scan_provider", "scan_amount", "scan_consumer"]:
+                st.session_state.pop(key, None)
+            st.rerun()
+
+
+# =========================================================
+# BILLS & PAYMENT ACTION
+# =========================================================
+with st.container(border=True):
+    st.markdown('<div class="section-title">My Bills & Settlements</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Pay and manage active balances</div>', unsafe_allow_html=True)
+
+    if bills:
+        for bill in bills:
+            b_id, b_type, prov, cons, amt, due, status, created = bill
+            with st.expander(f"{prov or b_type} • PKR {float(amt or 0):,.0f} ({status})"):
+                col_x, col_y = st.columns(2)
+                with col_x:
+                    st.write(f"**Provider:** {prov}")
+                    st.write(f"**Type:** {b_type}")
+                    st.write(f"**Account/Consumer:** {cons}")
+                with col_y:
+                    st.write(f"**Due Date:** {due or 'N/A'}")
+                    st.write(f"**Amount:** PKR {float(amt or 0):,.2f}")
+                    st.write(f"**Status:** {status}")
+
+                if status != "Paid":
+                    if st.button(f"Pay PKR {float(amt or 0):,.0f}", key=f"pay_{b_id}"):
+                        st.session_state["selected_bill"] = b_id
+                        st.session_state["selected_amount"] = float(amt or 0)
+                        st.session_state["show_payment"] = True
+                        st.rerun()
+    else:
+        st.info("No bills saved yet.")
+
+
+# =========================================================
+# PAYMENT GATEWAY MODAL
+# =========================================================
+if st.session_state.get("show_payment", False):
+    with st.container(border=True):
+        st.markdown('<div class="section-title">Payment Settlement Gateway</div>', unsafe_allow_html=True)
+        s_bill = st.session_state.get("selected_bill")
+        s_amt = st.session_state.get("selected_amount", 0.0)
+
+        st.write(f"#### Amount to Pay: PKR {s_amt:,.2f}")
+        method = st.selectbox("Payment Channel", ["JazzCash", "EasyPaisa", "Bank Transfer", "Raast Pay"], key="pay_method_select")
+
+        c_pay1, c_pay2 = st.columns(2)
+        with c_pay1:
+            if st.button("Confirm Payment", type="primary", key="confirm_pay_btn"):
+                if add_payment:
+                    add_payment(bill_id=s_bill, amount=s_amt, method=method)
+                st.session_state["show_payment"] = False
+                st.session_state.pop("selected_bill", None)
+                st.session_state.pop("selected_amount", None)
+                st.success("Payment settlement recorded.")
+                st.rerun()
+        with c_pay2:
+            if st.button("Cancel", key="cancel_pay_btn"):
+                st.session_state["show_payment"] = False
+                st.rerun()
+
+
+# =========================================================
+# AI ASSISTANT (CHAT)
+# =========================================================
 with st.container(border=True):
     st.markdown('<div class="section-title">Finguard AI Assistant</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-subtitle">Ask questions about your bills, payments and financial organization.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-subtitle">Real-time LLM financial advisor querying your bills and balances</div>', unsafe_allow_html=True)
 
-    bill_context = ""
-    if bills:
-        bill_context = "\n".join(
-            [
-                f"- {bill[1]} | Provider: {bill[2]} | Amount: PKR {float(bill[4] or 0):,.2f} | Due: {bill[5]} | Status: {bill[6]}"
-                for bill in bills
-            ]
-        )
-    else:
-        bill_context = "No bills are currently saved."
+    bill_context = "\n".join([f"- {b[1]} ({b[2]}): PKR {float(b[4] or 0):,.2f}, Due: {b[5]}, Status: {b[6]}" for b in bills]) if bills else "No bills recorded."
 
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    for role, message in st.session_state.chat_history:
+    for role, msg in st.session_state.chat_history:
         with st.chat_message(role):
-            st.markdown(message)
+            st.markdown(msg)
 
-    prompt = st.chat_input("Ask Finguard AI about your bills...")
+    user_query = st.chat_input("Ask about your pending utility bills, payments, or due dates...")
 
-    if prompt:
-        st.session_state.chat_history.append(("user", prompt))
+    if user_query:
+        st.session_state.chat_history.append(("user", user_query))
         with st.chat_message("user"):
-            st.markdown(prompt)
+            st.markdown(user_query)
 
-        ai_prompt = f"""
-The user's current bill information is:
-
+        full_prompt = f"""You are Finguard AI assistant.
+Current User Database:
 {bill_context}
 
-User question:
-
-{prompt}
-
-Answer clearly and practically.
-Use the bill information when relevant.
-If the required information is unavailable, say that it is unavailable.
-Never claim that a real payment was completed unless the application database confirms it.
-"""
+User question: {user_query}
+Provide a crisp, clear, and helpful response regarding their financial bills."""
 
         with st.chat_message("assistant"):
-            with st.spinner("Finguard AI is thinking..."):
-                answer = ask_groq(ai_prompt)
-                st.markdown(answer)
+            with st.spinner("Finguard AI checking data..."):
+                response = ask_groq(full_prompt)
+                st.markdown(response)
 
-        st.session_state.chat_history.append(("assistant", answer))
+        st.session_state.chat_history.append(("assistant", response))
 
 
 # =========================================================
 # FOOTER
 # =========================================================
-
 st.markdown(
-"""<div style="text-align:center; color:#475569; font-size:10px; margin-top:40px; padding-top:20px; border-top:1px solid #18202c;">
-    FINGUARD AI • Intelligent Bill Management<br>AI powered by Groq
+"""<div style="text-align:center; color:#475569; font-size:11px; margin-top:40px; padding-top:20px; border-top:1px solid #18202c;">
+    FINGUARD AI • Intelligent Multi-Agent Financial Assistant • Groq
 </div>""",
     unsafe_allow_html=True,
 )

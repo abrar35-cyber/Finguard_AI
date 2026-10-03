@@ -1,32 +1,29 @@
 import sqlite3
+from datetime import datetime
 
-
-DB_NAME = "billpay.db"
+DB_NAME = "finguard.db"
 
 
 def get_connection():
-
-    return sqlite3.connect(
-        DB_NAME
-    )
+    return sqlite3.connect(DB_NAME)
 
 
 def init_db():
-
     connection = get_connection()
-
     cursor = connection.cursor()
 
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS bills (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            provider TEXT,
             bill_type TEXT,
+            provider TEXT,
+            consumer_number TEXT,
             amount REAL,
             due_date TEXT,
-            account_number TEXT,
-            status TEXT DEFAULT 'pending'
+            status TEXT DEFAULT 'Pending',
+            extracted_text TEXT,
+            created_at TEXT
         )
         """
     )
@@ -35,151 +32,166 @@ def init_db():
         """
         CREATE TABLE IF NOT EXISTS payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            provider TEXT,
+            bill_id INTEGER,
             amount REAL,
-            transaction_id TEXT,
-            payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            payment_method TEXT,
+            status TEXT DEFAULT 'Successful',
+            paid_at TEXT
         )
         """
     )
 
     connection.commit()
-
     connection.close()
 
 
-def save_bill(bill):
-
+def add_bill(
+    bill_type="Other",
+    provider="",
+    consumer_number="",
+    amount=0.0,
+    due_date="",
+    extracted_text="",
+):
     connection = get_connection()
-
     cursor = connection.cursor()
 
     cursor.execute(
         """
-        INSERT INTO bills
-        (
-            provider,
+        INSERT INTO bills (
             bill_type,
+            provider,
+            consumer_number,
             amount,
             due_date,
-            account_number,
-            status
+            status,
+            extracted_text,
+            created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            bill.get("provider"),
-            bill.get("bill_type"),
-            bill.get("amount"),
-            bill.get("due_date"),
-            bill.get("account_number"),
-            "pending"
-        )
+            bill_type,
+            provider,
+            consumer_number,
+            float(amount or 0.0),
+            due_date,
+            "Pending",
+            extracted_text,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        ),
     )
 
+    bill_id = cursor.lastrowid
     connection.commit()
-
     connection.close()
+    return bill_id
+
+
+# Backward compatibility for agents passing dict
+def save_bill(bill):
+    return add_bill(
+        bill_type=bill.get("bill_type", "Other"),
+        provider=bill.get("provider", ""),
+        consumer_number=bill.get("account_number") or bill.get("consumer_number", ""),
+        amount=bill.get("amount", 0.0),
+        due_date=bill.get("due_date", ""),
+        extracted_text=bill.get("extracted_text", ""),
+    )
 
 
 def get_bills():
-
     connection = get_connection()
-
-    connection.row_factory = sqlite3.Row
-
     cursor = connection.cursor()
 
-    cursor.execute(
+    rows = cursor.execute(
         """
-        SELECT *
+        SELECT
+            id,
+            bill_type,
+            provider,
+            consumer_number,
+            amount,
+            due_date,
+            status,
+            created_at
         FROM bills
         ORDER BY id DESC
         """
-    )
-
-    rows = cursor.fetchall()
+    ).fetchall()
 
     connection.close()
+    return rows
 
-    return [
-        dict(row)
-        for row in rows
-    ]
+
+def get_payments():
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    rows = cursor.execute(
+        """
+        SELECT
+            payments.id,
+            COALESCE(bills.provider, 'Utility Bill') as provider,
+            payments.amount,
+            payments.payment_method,
+            payments.status,
+            payments.paid_at
+        FROM payments
+        LEFT JOIN bills ON payments.bill_id = bills.id
+        ORDER BY payments.id DESC
+        """
+    ).fetchall()
+
+    connection.close()
+    return rows
+
+
+def add_payment(bill_id, amount, method="Online"):
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    cursor.execute(
+        """
+        INSERT INTO payments (bill_id, amount, payment_method, status, paid_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (bill_id, float(amount or 0.0), method, "Successful", now),
+    )
+
+    if bill_id:
+        cursor.execute(
+            """
+            UPDATE bills
+            SET status = 'Paid'
+            WHERE id = ?
+            """,
+            (bill_id,),
+        )
+
+    connection.commit()
+    connection.close()
 
 
 def mark_bill_paid(bill_id):
-
     connection = get_connection()
-
     cursor = connection.cursor()
 
     cursor.execute(
         """
         UPDATE bills
-        SET status = 'paid'
+        SET status = 'Paid'
         WHERE id = ?
         """,
-        (bill_id,)
+        (bill_id,),
     )
 
     connection.commit()
-
     connection.close()
 
 
-def save_payment(
-    bill,
-    transaction_id
-):
-
-    connection = get_connection()
-
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO payments
-        (
-            provider,
-            amount,
-            transaction_id
-        )
-        VALUES (?, ?, ?)
-        """,
-        (
-            bill.get("provider"),
-            bill.get("amount"),
-            transaction_id
-        )
-    )
-
-    connection.commit()
-
-    connection.close()
-
-
+# Backward compatibility alias
 def get_payment_history():
-
-    connection = get_connection()
-
-    connection.row_factory = sqlite3.Row
-
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT *
-        FROM payments
-        ORDER BY id DESC
-        """
-    )
-
-    rows = cursor.fetchall()
-
-    connection.close()
-
-    return [
-        dict(row)
-        for row in rows
-    ]
+    return get_payments()
